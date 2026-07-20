@@ -1,12 +1,14 @@
-const CACHE_NAME = "cardscan-cm-v3";
+const CACHE_NAME = "cardscan-cm-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
+  "./icons/icon-180.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/icon-512-maskable.png",
   "./icons/card-placeholder.svg"
 ];
 
@@ -27,8 +29,8 @@ self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Online immer zuerst die aktuelle GitHub-Version laden. Nur ohne Verbindung
-  // wird auf den lokalen App-Cache zurückgegriffen.
+  // GitHub Pages wird online immer zuerst abgefragt. So landen Updates sofort
+  // auf dem iPhone; der Cache dient nur als Ausweichlösung ohne Verbindung.
   event.respondWith(
     fetch(event.request)
       .then(response => {

@@ -1,68 +1,98 @@
-# CardScan CM – erste Version
+# CardScan CM – Version 4
 
-Eine private Progressive Web App (PWA), die ein Foto einer Pokémon-Karte per OCR ausliest, passende Karten über TCGdex sucht und die gewählte Karte in der Cardmarket-Suche öffnet.
+Private iPhone-Web-App zum Erkennen von Pokémon-Karten und Öffnen der passenden Cardmarket-Suche.
 
-## Funktionen
+## Was Version 4 anders macht
 
-- Foto direkt mit dem iPhone aufnehmen
-- vorhandenes Bild aus der Fotomediathek auswählen
-- Name und Kartennummer per Tesseract.js erkennen
-- Treffer mit Kartenbild, Set und Nummer über TCGdex anzeigen
-- passende Cardmarket-Suche öffnen
-- manuelle Suche als Ausweichmöglichkeit
-- als App-Symbol auf dem iPhone-Homescreen installierbar
+Version 4 ist kein weiterer Einzelfall-Patch. Die Erkennung arbeitet als mehrstufige Pipeline:
 
-## Wichtig
+1. **Geführter Live-Scanner** mit festem Kartenrahmen
+2. **Exakter Zuschnitt** auf das Pokémon-Kartenformat
+3. **Automatische Rand- und Perspektiverkennung** bei Bildern aus der Fotomediathek
+4. **Mehrere Fallback-Ausschnitte**, falls der Kartenrand nicht sicher erkannt wird
+5. **Getrennte OCR-Bereiche** für Kartenname und Sammlernummer
+6. **Mehrere Kontrastvarianten** bei schwierigen Farben und Holo-Oberflächen
+7. **Prüfung von Kartennummer, Setgröße und Setkürzel**
+8. **Bildvergleich** mit den Kartenabbildungen der passenden Datenbanktreffer
+9. **Cardmarket-Suche mit Kartenname + Sammlernummer**
 
-Die App muss über HTTPS oder lokal über `localhost` laufen. Durch einfaches Öffnen der Datei `index.html` funktionieren Kamera, Service Worker und manche Browser-Sicherheitsfunktionen nicht zuverlässig.
+## Bedienung
 
-Die automatische Erkennung ist eine erste OCR-Version. Gerade bei Reflexionen, schrägen Fotos, japanischen Karten oder sehr kleinen Kartennummern kann eine manuelle Korrektur nötig sein.
+### Empfohlen: Live-Scanner
 
-## Schnelltest auf einem Computer
+1. `Live-Scanner öffnen` antippen.
+2. Die Außenkanten der Karte möglichst genau an den gelben Rahmen legen.
+3. Das iPhone parallel zur Karte halten.
+4. Spiegelungen vermeiden und den Auslöser antippen.
+5. Den vorbereiteten Kartenausschnitt prüfen.
+6. `Karte erkennen` antippen.
+7. Den passenden Treffer anhand von Bild und Kartennummer kontrollieren.
+8. `Auf Cardmarket öffnen` antippen.
 
-Im Projektordner einen lokalen Webserver starten:
+### Vorhandenes Bild
 
-```bash
-python3 -m http.server 8080
-```
+Mit `Bild auswählen` kann ein Foto aus der Mediathek verwendet werden. Die App versucht zunächst, die Kartenränder automatisch zu erkennen. Falls das nicht gelingt, prüft sie mehrere sinnvolle Ausschnitte und Ausrichtungen.
 
-Danach im Browser öffnen:
+## Gute Aufnahmebedingungen
+
+- Karte vollständig sichtbar
+- Kamera möglichst parallel zur Karte
+- gleichmäßiges Licht
+- keine harte Spiegelung über Name oder Kartennummer
+- möglichst nur eine Karte im gelben Rahmen
+- bei stark spiegelnden Karten das iPhone leicht seitlich versetzen, aber parallel halten
+
+## Manuelle Suche
+
+Die manuelle Suche bleibt als Ausweichmöglichkeit erhalten. Die Nummer kann beispielsweise so eingegeben werden:
 
 ```text
-http://localhost:8080
+064/132
+```
+
+oder bei Promokarten:
+
+```text
+SVP 085
 ```
 
 ## Veröffentlichung über GitHub Pages
 
-1. Auf GitHub ein neues Repository anlegen, zum Beispiel `pokemon-card-scanner`.
-2. Alle Dateien aus diesem Ordner in das Repository hochladen.
-3. Im Repository `Settings` öffnen.
-4. Links `Pages` auswählen.
-5. Unter `Build and deployment` bei `Source` die Option `Deploy from a branch` wählen.
-6. Als Branch `main` und als Ordner `/ (root)` auswählen und speichern.
-7. Nach der Veröffentlichung zeigt GitHub die HTTPS-Adresse der App an.
+1. Alle Dateien aus diesem Ordner in das Hauptverzeichnis des GitHub-Repositorys hochladen.
+2. `index.html` muss direkt im Hauptverzeichnis liegen.
+3. Unter `Settings → Pages` die Quelle `Deploy from a branch` verwenden.
+4. Branch `main` und Ordner `/(root)` auswählen.
+5. Nach dem Speichern die von GitHub angezeigte HTTPS-Adresse öffnen.
 
 ## Installation auf dem iPhone
 
-1. Die veröffentlichte HTTPS-Adresse in **Safari** öffnen.
-2. Unten auf das **Teilen-Symbol** tippen.
-3. Nach unten scrollen und **Zum Home-Bildschirm** wählen.
-4. Den Namen bestätigen und rechts oben **Hinzufügen** antippen.
-5. Danach startet die App über ihr Symbol nahezu wie eine normale iPhone-App.
+1. Die GitHub-Pages-Adresse in Safari öffnen.
+2. Auf das Teilen-Symbol tippen.
+3. `Zum Home-Bildschirm` auswählen.
+4. `Hinzufügen` bestätigen.
 
 ## Dateien
 
-- `index.html` – Oberfläche
+- `index.html` – Oberfläche und Live-Scanner
 - `styles.css` – Gestaltung
-- `app.js` – OCR, Kartensuche und Cardmarket-Weiterleitung
+- `app.js` – Kamera, OCR, Kartenabgleich, Bildvergleich und Cardmarket-Link
 - `manifest.webmanifest` – PWA-Einstellungen
-- `service-worker.js` – App-Grunddateien zwischenspeichern
-- `icons/` – App-Symbole und Platzhalter
+- `service-worker.js` – App-Cache und Update-Verhalten
+- `icons/` – App-Symbole
 
-## Externe Dienste
+## Externe Komponenten
 
-- Tesseract.js für die Texterkennung im Browser
-- TCGdex für Karteninformationen und Kartenbilder
+- Tesseract.js für die Texterkennung
+- OpenCV.js für Kartenrand- und Perspektiverkennung
+- TCGdex für Kartendaten, Kartenbilder und – sofern vorhanden – Preisfelder
 - Cardmarket als Ziel der Produktsuche
 
-Für diese erste Version werden keine eigenen API-Schlüssel benötigt.
+Es werden keine eigenen API-Schlüssel benötigt. Kamera, Kartensuche, Bilderkennung und externe Bibliotheken benötigen eine Internetverbindung. Die Bildverarbeitung selbst findet im Browser statt; das Kartenfoto wird von dieser App nicht auf einen eigenen Server hochgeladen.
+
+## Versionskontrolle
+
+Unter `Erkennungsdetails anzeigen` muss in dieser Ausgabe stehen:
+
+```text
+CardScan CM v4.0
+```

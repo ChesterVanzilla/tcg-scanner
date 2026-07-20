@@ -7,11 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="CardScan CM" />
-  <meta name="description" content="Pokémon-Karte fotografieren, erkennen und auf Cardmarket öffnen." />
+  <meta name="description" content="Pokémon-Karte scannen, erkennen, Preise prüfen und auf Cardmarket öffnen." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
   <title>CardScan CM</title>
 </head>
 <body>
@@ -28,8 +28,8 @@
       <section class="panel intro-panel">
         <div class="step-badge">1</div>
         <div class="panel-copy">
-          <h2>Karte fotografieren</h2>
-          <p>Lege die Karte möglichst gerade auf eine ruhige Fläche. Die Karte sollte vollständig, möglichst gerade und bildfüllend zu sehen sein. Name und Kartennummer müssen gut lesbar sein.</p>
+          <h2>Karte scannen</h2>
+          <p>Am zuverlässigsten funktioniert der neue Live-Scanner. Richte die Außenkanten der Karte am gelben Rahmen aus und halte das iPhone möglichst parallel zur Karte.</p>
         </div>
 
         <div class="language-row">
@@ -41,11 +41,10 @@
         </div>
 
         <div class="upload-actions">
-          <label class="primary-button camera-button">
-            <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+          <button id="openScannerButton" class="primary-button" type="button">
             <span class="button-icon">⌾</span>
-            Foto aufnehmen
-          </label>
+            Live-Scanner öffnen
+          </button>
           <label class="secondary-button">
             <input id="galleryInput" type="file" accept="image/*" hidden />
             <span class="button-icon">▧</span>
@@ -53,8 +52,18 @@
           </label>
         </div>
 
+        <label class="fallback-camera-link">
+          <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+          Kamera-App als Alternative verwenden
+        </label>
+
         <div id="previewWrap" class="preview-wrap hidden">
-          <img id="previewImage" alt="Ausgewählte Pokémon-Karte" />
+          <div class="preview-label-row">
+            <strong id="previewLabel">Vorbereiteter Kartenausschnitt</strong>
+            <span id="cropStatus" class="status-chip">bereit</span>
+          </div>
+          <img id="previewImage" alt="Vorbereiteter Ausschnitt der Pokémon-Karte" />
+          <p class="preview-help">Prüfe kurz, ob die vollständige Karte zu sehen ist. Ein kleiner Rand außerhalb der Karte ist unproblematisch.</p>
           <button id="analyzeButton" class="primary-button wide-button" type="button">Karte erkennen</button>
         </div>
       </section>
@@ -75,7 +84,7 @@
           <div class="step-badge">2</div>
           <div>
             <h2>Erkannte Treffer</h2>
-            <p>Wähle die Karte aus, die deinem Foto entspricht.</p>
+            <p>Die Treffer werden aus Text, Kartennummer, Setgröße und Kartenbild gemeinsam bewertet.</p>
           </div>
         </div>
         <div id="resultMessage" class="notice hidden"></div>
@@ -86,15 +95,15 @@
         <details>
           <summary>Karte manuell suchen</summary>
           <div class="manual-content">
-            <p>Praktisch, falls die automatische Erkennung einmal nicht eindeutig ist.</p>
+            <p>Falls eine ungewöhnliche oder sehr stark spiegelnde Karte nicht sicher erkannt wird.</p>
             <div class="form-grid">
               <label>
                 Kartenname
-                <input id="manualName" type="text" autocomplete="off" placeholder="z. B. Pikachu" />
+                <input id="manualName" type="text" autocomplete="off" placeholder="z. B. Xerneas" />
               </label>
               <label>
                 Kartennummer
-                <input id="manualNumber" type="text" autocomplete="off" placeholder="z. B. 085" />
+                <input id="manualNumber" type="text" autocomplete="off" placeholder="z. B. 064/132" />
               </label>
             </div>
             <button id="manualSearchButton" class="secondary-button wide-button" type="button">Treffer suchen</button>
@@ -104,7 +113,7 @@
 
       <section id="debugPanel" class="panel debug-panel hidden">
         <details>
-          <summary>Erkannten Text anzeigen</summary>
+          <summary>Erkennungsdetails anzeigen</summary>
           <pre id="ocrText"></pre>
         </details>
       </section>
@@ -112,12 +121,39 @@
 
     <footer>
       <p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
-      <p class="connection-note">Für Erkennung, Kartensuche und Cardmarket wird eine Internetverbindung benötigt.</p>
+      <p class="connection-note">Für Texterkennung, Kartensuche, Bildvergleich und Cardmarket wird eine Internetverbindung benötigt.</p>
     </footer>
   </div>
 
-  <canvas id="workCanvas" hidden></canvas>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="app.js?v=3" defer></script>
+  <div id="scannerModal" class="scanner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="scannerTitle">
+    <div class="scanner-topbar">
+      <button id="closeScannerButton" class="scanner-text-button" type="button">Abbrechen</button>
+      <strong id="scannerTitle">Karte ausrichten</strong>
+      <span aria-hidden="true"></span>
+    </div>
+    <div id="cameraViewport" class="camera-viewport">
+      <video id="cameraVideo" playsinline muted></video>
+      <div id="scannerGuide" class="scanner-guide" aria-hidden="true">
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-br"></span>
+        <span class="corner corner-bl"></span>
+        <div class="guide-scan-line"></div>
+      </div>
+      <div class="camera-shade shade-top"></div>
+      <div class="camera-shade shade-bottom"></div>
+      <div class="camera-shade shade-left"></div>
+      <div class="camera-shade shade-right"></div>
+    </div>
+    <div class="scanner-controls">
+      <p id="cameraStatus">Karte vollständig in den Rahmen legen.</p>
+      <button id="captureButton" class="capture-button" type="button" aria-label="Foto aufnehmen"><span></span></button>
+    </div>
+  </div>
+
+  <canvas id="sourceCanvas" hidden></canvas>
+  <canvas id="cardCanvas" hidden></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
+  <script src="app.js?v=4" defer></script>
 </body>
 </html>
