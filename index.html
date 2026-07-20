@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#10131a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CardScan CM" />
+  <meta name="description" content="Pokémon-Karte fotografieren, erkennen und auf Cardmarket öffnen." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>CardScan CM</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true"><span></span></div>
+      <div>
+        <h1>CardScan <em>CM</em></h1>
+        <p>Pokémon-Karte erkennen und auf Cardmarket öffnen</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel intro-panel">
+        <div class="step-badge">1</div>
+        <div class="panel-copy">
+          <h2>Karte fotografieren</h2>
+          <p>Lege die Karte möglichst gerade auf eine ruhige Fläche. Name und Kartennummer sollten gut lesbar sein.</p>
+        </div>
+
+        <div class="language-row">
+          <label for="language">Kartensprache</label>
+          <select id="language">
+            <option value="de" selected>Deutsch</option>
+            <option value="en">Englisch</option>
+          </select>
+        </div>
+
+        <div class="upload-actions">
+          <label class="primary-button camera-button">
+            <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+            <span class="button-icon">⌾</span>
+            Foto aufnehmen
+          </label>
+          <label class="secondary-button">
+            <input id="galleryInput" type="file" accept="image/*" hidden />
+            <span class="button-icon">▧</span>
+            Bild auswählen
+          </label>
+        </div>
+
+        <div id="previewWrap" class="preview-wrap hidden">
+          <img id="previewImage" alt="Ausgewählte Pokémon-Karte" />
+          <button id="analyzeButton" class="primary-button wide-button" type="button">Karte erkennen</button>
+        </div>
+      </section>
+
+      <section id="progressPanel" class="panel progress-panel hidden" aria-live="polite">
+        <div class="scanner-animation" aria-hidden="true">
+          <div class="mini-card"><div class="scan-line"></div></div>
+        </div>
+        <div class="progress-copy">
+          <strong id="progressTitle">Bild wird vorbereitet …</strong>
+          <span id="progressText">0 %</span>
+          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        </div>
+      </section>
+
+      <section id="resultPanel" class="panel result-panel hidden">
+        <div class="section-heading">
+          <div class="step-badge">2</div>
+          <div>
+            <h2>Erkannte Treffer</h2>
+            <p>Wähle die Karte aus, die deinem Foto entspricht.</p>
+          </div>
+        </div>
+        <div id="resultMessage" class="notice hidden"></div>
+        <div id="results" class="card-results"></div>
+      </section>
+
+      <section id="manualPanel" class="panel manual-panel">
+        <details>
+          <summary>Karte manuell suchen</summary>
+          <div class="manual-content">
+            <p>Praktisch, falls die automatische Erkennung einmal nicht eindeutig ist.</p>
+            <div class="form-grid">
+              <label>
+                Kartenname
+                <input id="manualName" type="text" autocomplete="off" placeholder="z. B. Pikachu" />
+              </label>
+              <label>
+                Kartennummer
+                <input id="manualNumber" type="text" autocomplete="off" placeholder="z. B. 085" />
+              </label>
+            </div>
+            <button id="manualSearchButton" class="secondary-button wide-button" type="button">Treffer suchen</button>
+          </div>
+        </details>
+      </section>
+
+      <section id="debugPanel" class="panel debug-panel hidden">
+        <details>
+          <summary>Erkannten Text anzeigen</summary>
+          <pre id="ocrText"></pre>
+        </details>
+      </section>
+    </main>
+
+    <footer>
+      <p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
+      <p class="connection-note">Für Erkennung, Kartensuche und Cardmarket wird eine Internetverbindung benötigt.</p>
+    </footer>
+  </div>
+
+  <canvas id="workCanvas" hidden></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
