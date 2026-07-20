@@ -3,11 +3,11 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "4.0";
+const APP_VERSION = "5.0";
 const CARD_WIDTH = 750;
 const CARD_HEIGHT = 1050;
 const MAX_RESULTS = 8;
-const MAX_IMAGE_CANDIDATES = 48;
+const MAX_IMAGE_CANDIDATES = 72;
 
 const els = {
   openScannerButton: document.querySelector("#openScannerButton"),
@@ -327,7 +327,7 @@ async function chooseBestCanvasAndOrientation(worker, canvases) {
 
 async function recognizeQuickCard(worker, canvas, start, end) {
   const observations = [];
-  const middle = start + (end - start) * 0.5;
+  const first = start + (end - start) * 0.42;
 
   observations.push(await recognizeRegion(worker, canvas, {
     label: "Schnelltest Name",
@@ -335,15 +335,18 @@ async function recognizeQuickCard(worker, canvas, start, end) {
     mode: "title",
     psm: "7",
     progressStart: start,
-    progressEnd: middle
+    progressEnd: first
   }));
 
+  // Holo-, Mega- und ex-Karten besitzen oft stark strukturierte Fußzeilen.
+  // Lokaler Kontrast macht die kleine Sammlernummer deutlich stabiler lesbar.
   observations.push(await recognizeRegion(worker, canvas, {
-    label: "Schnelltest Nummer",
-    region: { x: 0.02, y: 0.79, width: 0.96, height: 0.20 },
+    label: "Schnelltest Nummer – Lokal-Kontrast",
+    region: { x: 0.015, y: 0.865, width: 0.72, height: 0.125 },
     mode: "number",
     psm: "11",
-    progressStart: middle,
+    preprocessing: "local-contrast",
+    progressStart: first,
     progressEnd: end
   }));
 
@@ -355,10 +358,13 @@ async function recognizeDetailedCard(worker, canvas, quick) {
   const jobs = [
     { label: "Name Kopfzeile", region: { x: 0.025, y: 0.0, width: 0.95, height: 0.155 }, mode: "title", psm: "11" },
     { label: "Name Standard", region: { x: 0.105, y: 0.012, width: 0.70, height: 0.105 }, mode: "title", psm: "7" },
+    { label: "Name Spezialkarte – Lokal-Kontrast", region: { x: 0.105, y: 0.018, width: 0.69, height: 0.105 }, mode: "title", psm: "7", preprocessing: "local-contrast" },
+    { label: "Mega-/Entwicklungszeile", region: { x: 0.16, y: 0.095, width: 0.80, height: 0.145 }, mode: "context", psm: "11", preprocessing: "local-contrast" },
     { label: "Name Trainer/Full-Art", region: { x: 0.035, y: 0.018, width: 0.93, height: 0.235 }, mode: "title", psm: "11" },
-    { label: "Nummer Fußzeile eng", region: { x: 0.015, y: 0.895, width: 0.72, height: 0.10 }, mode: "number", psm: "11" },
-    { label: "Nummer Unterkante", region: { x: 0.005, y: 0.82, width: 0.99, height: 0.175 }, mode: "number", psm: "11" },
-    { label: "Nummer gesamte Unterkante", region: { x: 0.005, y: 0.755, width: 0.99, height: 0.24 }, mode: "number", psm: "11" }
+    { label: "Nummer Sammlerzeile – Lokal-Kontrast", region: { x: 0.015, y: 0.885, width: 0.60, height: 0.105 }, mode: "number", psm: "11", preprocessing: "local-contrast" },
+    { label: "Nummer Fußzeile", region: { x: 0.015, y: 0.895, width: 0.72, height: 0.10 }, mode: "number", psm: "11" },
+    { label: "Nummer Unterkante – Lokal-Kontrast", region: { x: 0.005, y: 0.82, width: 0.99, height: 0.175 }, mode: "number", psm: "11", preprocessing: "local-contrast" },
+    { label: "Regelbox / Kartenmechanik", region: { x: 0.015, y: 0.805, width: 0.97, height: 0.175 }, mode: "mechanic", psm: "11", preprocessing: "local-contrast" }
   ];
 
   for (let index = 0; index < jobs.length; index += 1) {
@@ -372,24 +378,24 @@ async function recognizeDetailedCard(worker, canvas, quick) {
     });
     observations.push(observation);
 
-    // Eine zweite, binarisierte Auswertung wird nur bei schwachem Ergebnis
-    // durchgeführt. Das spart Zeit und verbessert problematische Holo-Karten.
-    if (observation.confidence < 48 || observation.text.trim().length < 4) {
+    // Nur schwache Standardauswertungen erhalten eine weitere Variante. Jobs,
+    // die bereits lokal normalisiert wurden, werden nicht doppelt gerechnet.
+    if (!job.preprocessing && (observation.confidence < 48 || observation.text.trim().length < 4)) {
       const retry = await recognizeRegion(worker, canvas, {
         ...job,
-        label: `${job.label} – Farbkontrast`,
-        preprocessing: "dark-channel",
+        label: `${job.label} – Lokal-Kontrast`,
+        preprocessing: "local-contrast",
         progressStart: Math.max(start, end - 1),
         progressEnd: end
       });
       observations.push(retry);
     }
 
-    if ((observation.confidence < 28 || observation.text.trim().length < 2) && /Nummer/.test(job.label)) {
+    if ((observation.confidence < 25 || observation.text.trim().length < 2) && /Nummer/.test(job.label)) {
       const binaryRetry = await recognizeRegion(worker, canvas, {
         ...job,
         label: `${job.label} – Schwarzweiß`,
-        preprocessing: "binary",
+        preprocessing: "local-binary",
         progressStart: Math.max(start, end - 0.5),
         progressEnd: end
       });
@@ -410,7 +416,9 @@ async function recognizeRegion(worker, canvas, options) {
 
   const whitelist = options.mode === "number"
     ? "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöü0123456789/| -"
-    : "";
+    : options.mode === "mechanic" || options.mode === "context"
+      ? "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789/|€- "
+      : "";
 
   await worker.setParameters({
     tessedit_pageseg_mode: options.psm,
@@ -452,7 +460,7 @@ function createProcessedCrop(source, region, mode, preprocessing) {
   const sy = Math.max(0, Math.round(source.height * region.y));
   const sw = Math.max(1, Math.min(source.width - sx, Math.round(source.width * region.width)));
   const sh = Math.max(1, Math.min(source.height - sy, Math.round(source.height * region.height)));
-  const targetWidth = mode === "number" ? 1450 : 1350;
+  const targetWidth = mode === "number" || mode === "mechanic" || mode === "context" ? 1550 : 1400;
   const targetHeight = Math.max(150, Math.round(sh * targetWidth / sw));
   const canvas = createCanvas(targetWidth, targetHeight);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -462,24 +470,47 @@ function createProcessedCrop(source, region, mode, preprocessing) {
 
   const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
   const pixels = imageData.data;
-  const gray = new Uint8Array(targetWidth * targetHeight);
+  let gray = new Uint8Array(targetWidth * targetHeight);
   let minimum = 255;
   let maximum = 0;
 
   for (let i = 0, p = 0; i < pixels.length; i += 4, p += 1) {
-    const value = preprocessing === "dark-channel"
-      ? Math.min(pixels[i], pixels[i + 1], pixels[i + 2])
-      : Math.round(0.22 * pixels[i] + 0.70 * pixels[i + 1] + 0.08 * pixels[i + 2]);
+    let value;
+    if (preprocessing === "dark-channel") value = Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
+    else if (preprocessing === "red-channel") value = pixels[i];
+    else if (preprocessing === "green-channel") value = pixels[i + 1];
+    else if (preprocessing === "blue-channel") value = pixels[i + 2];
+    else if (preprocessing === "saturation") {
+      const max = Math.max(pixels[i], pixels[i + 1], pixels[i + 2]);
+      const min = Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
+      value = max === 0 ? 0 : Math.round((max - min) * 255 / max);
+    } else {
+      value = Math.round(0.22 * pixels[i] + 0.70 * pixels[i + 1] + 0.08 * pixels[i + 2]);
+    }
     gray[p] = value;
     minimum = Math.min(minimum, value);
     maximum = Math.max(maximum, value);
   }
 
+  if (preprocessing === "local-contrast" || preprocessing === "local-binary") {
+    // Eine lokale Helligkeitsnormalisierung entfernt Holo-Verläufe, Regenbogen-
+    // Glanz und dunkle Full-Art-Hintergründe, ohne die kleinen Ziffern am
+    // Kartenrand zu zerstören. Das ist besonders wichtig bei Mega-/ex-Karten.
+    const radius = mode === "number" ? 22 : 18;
+    gray = applyLocalContrast(gray, targetWidth, targetHeight, radius, 45);
+    minimum = 0;
+    maximum = 255;
+  }
+
   const span = Math.max(35, maximum - minimum);
-  const threshold = preprocessing === "binary" ? otsuThreshold(gray) : null;
+  const threshold = preprocessing === "binary" || preprocessing === "local-binary" ? otsuThreshold(gray) : null;
   for (let i = 0, p = 0; i < pixels.length; i += 4, p += 1) {
-    let value = Math.round((gray[p] - minimum) * 255 / span);
-    value = Math.max(0, Math.min(255, (value - 128) * 1.18 + 128));
+    let value = preprocessing === "local-contrast" || preprocessing === "local-binary"
+      ? gray[p]
+      : Math.round((gray[p] - minimum) * 255 / span);
+    if (preprocessing !== "local-contrast" && preprocessing !== "local-binary") {
+      value = Math.max(0, Math.min(255, (value - 128) * 1.18 + 128));
+    }
     if (threshold !== null) value = gray[p] > threshold ? 255 : 0;
     pixels[i] = value;
     pixels[i + 1] = value;
@@ -490,20 +521,152 @@ function createProcessedCrop(source, region, mode, preprocessing) {
   return canvas;
 }
 
+function applyLocalContrast(gray, width, height, radius = 18, contrastScale = 45) {
+  const stride = width + 1;
+  const integral = new Float64Array((width + 1) * (height + 1));
+  const integralSquared = new Float64Array((width + 1) * (height + 1));
+
+  for (let y = 1; y <= height; y += 1) {
+    let rowSum = 0;
+    let rowSquared = 0;
+    const sourceOffset = (y - 1) * width;
+    const integralOffset = y * stride;
+    const previousOffset = (y - 1) * stride;
+    for (let x = 1; x <= width; x += 1) {
+      const value = gray[sourceOffset + x - 1];
+      rowSum += value;
+      rowSquared += value * value;
+      integral[integralOffset + x] = integral[previousOffset + x] + rowSum;
+      integralSquared[integralOffset + x] = integralSquared[previousOffset + x] + rowSquared;
+    }
+  }
+
+  const output = new Uint8Array(gray.length);
+  for (let y = 0; y < height; y += 1) {
+    const y1 = Math.max(0, y - radius);
+    const y2 = Math.min(height - 1, y + radius);
+    const top = y1 * stride;
+    const bottom = (y2 + 1) * stride;
+    for (let x = 0; x < width; x += 1) {
+      const x1 = Math.max(0, x - radius);
+      const x2 = Math.min(width - 1, x + radius);
+      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
+      const sum = integral[bottom + x2 + 1] - integral[top + x2 + 1] - integral[bottom + x1] + integral[top + x1];
+      const sumSquared = integralSquared[bottom + x2 + 1] - integralSquared[top + x2 + 1] - integralSquared[bottom + x1] + integralSquared[top + x1];
+      const mean = sum / area;
+      const variance = Math.max(25, sumSquared / area - mean * mean);
+      const normalized = 128 + (gray[y * width + x] - mean) * contrastScale / Math.sqrt(variance);
+      output[y * width + x] = Math.max(0, Math.min(255, Math.round(normalized)));
+    }
+  }
+  return output;
+}
+
 function parseOcrObservations(observations) {
-  const nameHints = extractNameHints(observations.filter(item => item.mode === "title"));
-  const identifiers = extractCardIdentifiers(observations.filter(item => item.mode === "number"));
+  const titleHints = extractNameHints(observations.filter(item => item.mode === "title"));
+  const contextHints = extractContextNameHints(observations.filter(item => item.mode === "context" || item.mode === "mechanic"));
+  const mechanics = extractMechanics(observations);
+  const nameHints = mergeNameHints(titleHints, contextHints, mechanics);
+  const identifiers = extractCardIdentifiers(observations.filter(item => item.mode === "number" || item.mode === "mechanic"));
   const rawText = observations.map(item => `[${item.label} · ${Math.round(item.confidence)} %]\n${item.text.trim()}`).join("\n\n");
 
   return {
     rawText,
     normalizedText: normalizeText(rawText),
     nameHints,
+    mechanics,
     identifiers,
     numbers: unique(identifiers.map(item => item.number).filter(Boolean)),
     denominators: unique(identifiers.map(item => item.denominator).filter(Boolean)),
     setCodes: unique(identifiers.map(item => item.setCode).filter(Boolean))
   };
+}
+
+function extractContextNameHints(observations) {
+  const candidates = [];
+  const add = (value, score, observation, sourceSuffix) => {
+    const cleaned = cleanOcrLine(value)
+      .replace(/[^A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\- ]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned.length < 4 || cleaned.length > 28) return;
+    candidates.push({
+      value: cleaned,
+      score: score + observation.confidence * 0.45,
+      confidence: observation.confidence,
+      source: `${observation.label}${sourceSuffix ? ` – ${sourceSuffix}` : ""}`
+    });
+  };
+
+  for (const observation of observations) {
+    const text = observation.text.replace(/\s+/g, " ");
+    const patterns = [
+      /mega[-\s]*(?:entwickelte|entwickelten|entwicklung(?:s)?)[-\s]*(?:form)?\s*(?:von|des)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\-]{3,})/gi,
+      /mega[-\s]*(?:evolved|evolution)\s*(?:form)?\s*(?:of|from)\s+([A-Z][A-Za-z'\-]{3,})/gi,
+      /(?:form|forme)\s+(?:von|of|de)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\-]{3,})/gi
+    ];
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) add(match[1], 132, observation, "Mega-Basisname");
+    }
+
+    // OCR trennt „Die Mega-entwickelte Form / von Stalobor“ häufig auf zwei
+    // Zeilen. Sobald der Mega-Kontext vorhanden ist, darf ein „von X“-Fragment
+    // als Basisname verwendet werden; Evolutionszeilen ohne Mega-Bezug bleiben
+    // ausgeschlossen, damit nicht versehentlich Rotomurf statt Stalobor gewinnt.
+    if (/mega/i.test(text)) {
+      for (const match of text.matchAll(/\bvon\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\-]{3,})/g)) {
+        add(match[1], 118, observation, "Mega-von-Zeile");
+      }
+      for (const match of text.matchAll(/\bof\s+([A-Z][A-Za-z'\-]{3,})/g)) {
+        add(match[1], 118, observation, "Mega-of-Zeile");
+      }
+    }
+  }
+  return candidates;
+}
+
+function extractMechanics(observations) {
+  const joined = observations.map(item => item.text).join(" ")
+    .replace(/[€£]/g, "e")
+    .replace(/[—–_]/g, "-")
+    .toLowerCase();
+  const mechanics = [];
+  const add = value => { if (!mechanics.includes(value)) mechanics.push(value); };
+
+  if (/\bmega\b|mega[-\s]*(?:entwick|evol)/i.test(joined)) add("mega");
+  if (/pok[eé]mon[-\s]*(?:e?x|€x)|\b[e€]x[-\s]*(?:regel|rule)|\bex\b/i.test(joined)) add("ex");
+  if (/\bgx\b|pok[eé]mon[-\s]*gx/i.test(joined)) add("gx");
+  if (/\bvmax\b/i.test(joined)) add("vmax");
+  if (/\bvstar\b|v[-\s]*star/i.test(joined)) add("vstar");
+  if (/v[-\s]*union/i.test(joined)) add("v-union");
+  if (/tag[-\s]*team/i.test(joined)) add("tag-team");
+  if (/\bbreak\b/i.test(joined)) add("break");
+  if (/strahlend|radiant/i.test(joined)) add("radiant");
+  if (/gl[aä]nzend|shining/i.test(joined)) add("shining");
+  return mechanics;
+}
+
+function mergeNameHints(titleHints, contextHints, mechanics) {
+  const candidates = [...contextHints, ...titleHints];
+  const expanded = [];
+  for (const item of candidates) {
+    expanded.push(item);
+    const base = stripCardMechanics(item.value);
+    if (base && normalizeText(base) !== normalizeText(item.value)) {
+      expanded.push({ ...item, value: base, score: item.score + 16, source: `${item.source} – Basisname` });
+    }
+    if (base && mechanics.includes("mega")) {
+      expanded.push({ ...item, value: `Mega-${base} ex`, score: item.score + 46, source: `${item.source} – Mega/ex kombiniert` });
+      expanded.push({ ...item, value: `Mega ${base} ex`, score: item.score + 39, source: `${item.source} – Mega/ex Variante` });
+    } else if (base && mechanics.includes("ex")) {
+      expanded.push({ ...item, value: `${base} ex`, score: item.score + 28, source: `${item.source} – ex kombiniert` });
+    }
+  }
+
+  return expanded
+    .sort((a, b) => b.score - a.score)
+    .filter((item, index, array) => array.findIndex(other => normalizeText(other.value) === normalizeText(item.value)) === index)
+    .slice(0, 12);
 }
 
 function extractNameHints(observations) {
@@ -583,11 +746,27 @@ function extractNameHints(observations) {
 function extractCardIdentifiers(observations) {
   const candidates = [];
   const add = (number, denominator, setCode, score, source, raw) => {
-    const normalizedNumber = normalizeCollectorNumber(number);
     const denominatorDigits = String(denominator || "").toUpperCase().replace(/O/g, "0").replace(/\s+/g, "").replace(/[^0-9]/g, "");
     const denominatorValue = denominatorDigits ? Number(denominatorDigits) : null;
-    if (!normalizedNumber) return;
     if (denominatorDigits && (!Number.isFinite(denominatorValue) || denominatorValue < 10 || denominatorValue > 999)) return;
+
+    let normalizedNumber = normalizeCollectorNumber(number);
+    // Lokale Kontrastfilter können am linken Rand einen zusätzlichen Strich als
+    // „1“ lesen (z. B. 1065/084). Bei vorhandenem Nenner ist die letzte
+    // dreistellige Folge meist die echte Sammlernummer.
+    if (!normalizedNumber && denominatorValue) {
+      const compact = String(number || "").toUpperCase().replace(/O/g, "0").replace(/[^A-Z0-9]/g, "");
+      const match = compact.match(/^([A-Z]*)(\d{4})$/);
+      if (match) {
+        const tail = match[2].slice(-3);
+        const tailValue = Number(tail);
+        if (tailValue > 0 && tailValue <= denominatorValue + 100) {
+          normalizedNumber = `${match[1]}${tail}`;
+          score -= 18;
+        }
+      }
+    }
+    if (!normalizedNumber) return;
     const numericNumber = Number(normalizedNumber.replace(/^[A-Z]+/, ""));
     if (denominatorValue && Number.isFinite(numericNumber) && numericNumber > denominatorValue + 200) return;
     candidates.push({
@@ -686,9 +865,10 @@ function extractCardIdentifiers(observations) {
 function scoreQuickRecognition(parsed, observations) {
   let score = 0;
   if (parsed.nameHints[0]) score += Math.min(100, parsed.nameHints[0].score);
-  if (parsed.identifiers[0]) score += Math.min(120, parsed.identifiers[0].score);
-  if (parsed.identifiers[0]?.denominator) score += 35;
+  if (parsed.identifiers[0]) score += Math.min(135, parsed.identifiers[0].score);
+  if (parsed.identifiers[0]?.denominator) score += 48;
   if (parsed.identifiers[0]?.setCode) score += 20;
+  if (parsed.mechanics?.length) score += 10;
   score += observations.reduce((sum, item) => sum + Math.max(0, item.confidence - 40) * 0.08, 0);
   return score;
 }
@@ -708,6 +888,7 @@ async function manualSearch() {
       rawText: `${name}\n${els.manualNumber.value}`,
       normalizedText: normalizeText(`${name} ${els.manualNumber.value}`),
       nameHints: name ? [{ value: name, score: 100, confidence: 100, source: "manuell" }] : [],
+      mechanics: extractMechanics([{ text: name, mode: "manual" }]),
       identifiers: manualIdentifier.number ? [{ ...manualIdentifier, score: 120, source: "manuell", raw: els.manualNumber.value }] : [],
       numbers: manualIdentifier.number ? [manualIdentifier.number] : [],
       denominators: manualIdentifier.denominator ? [manualIdentifier.denominator] : [],
@@ -732,17 +913,27 @@ async function manualSearch() {
 
 async function findCandidates(parsed, language) {
   const candidateMap = new Map();
+  const selectedLanguage = language || "de";
+  const searchLanguages = selectedLanguage === "en" ? ["en"] : [selectedLanguage, "en"];
   const tasks = [];
 
-  for (const number of parsed.numbers.slice(0, 3)) {
-    for (const variant of numberVariants(number)) {
-      tasks.push(fetchCards(language, { localId: `eq:${variant}` }, 250));
+  for (const dataLanguage of searchLanguages) {
+    for (const number of parsed.numbers.slice(0, 4)) {
+      for (const variant of numberVariants(number)) {
+        tasks.push(fetchCards(dataLanguage, { localId: `eq:${variant}` }, 300));
+      }
     }
-  }
 
-  for (const hint of parsed.nameHints.slice(0, 4)) {
-    for (const variant of nameSearchVariants(hint.value)) {
-      tasks.push(fetchCards(language, { name: variant }, 140));
+    // Namenssuchen werden in der gewählten Sprache priorisiert. Die englische
+    // Rückfallebene ist vor allem für brandneue Sets gedacht, bei denen die
+    // deutsche Datenbankkarte noch nicht verfügbar ist; die Nummernsuche bleibt
+    // dort sprachunabhängig besonders wertvoll.
+    if (dataLanguage === selectedLanguage || selectedLanguage === "en") {
+      for (const hint of parsed.nameHints.slice(0, 6)) {
+        for (const variant of nameSearchVariants(hint.value, parsed.mechanics)) {
+          tasks.push(fetchCards(dataLanguage, { name: variant }, 180));
+        }
+      }
     }
   }
 
@@ -750,14 +941,25 @@ async function findCandidates(parsed, language) {
   const responses = await Promise.allSettled(tasks);
   for (const response of responses) {
     if (response.status !== "fulfilled") continue;
-    for (const card of response.value) candidateMap.set(card.id, card);
+    for (const card of response.value) {
+      const key = String(card.id || `${card._dataLanguage}-${card.localId}-${card.name}`);
+      const existing = candidateMap.get(key);
+      if (!existing || (existing._dataLanguage !== selectedLanguage && card._dataLanguage === selectedLanguage)) {
+        candidateMap.set(key, card);
+      }
+    }
   }
 
   let candidates = [...candidateMap.values()];
-  const sets = await getSetsMap(language).catch(() => new Map());
+  const setMapEntries = await Promise.all(searchLanguages.map(async dataLanguage => {
+    try { return [dataLanguage, await getSetsMap(dataLanguage)]; }
+    catch { return [dataLanguage, new Map()]; }
+  }));
+  const setsByLanguage = new Map(setMapEntries);
+
   candidates = candidates.map(card => {
     const setId = cardSetId(card);
-    const set = sets.get(setId);
+    const set = setsByLanguage.get(card._dataLanguage)?.get(setId);
     return { ...card, _setId: setId, _setBrief: set || null };
   });
 
@@ -767,7 +969,7 @@ async function findCandidates(parsed, language) {
     if (exact.length) candidates = exact;
   }
 
-  const setCodes = parsed.setCodes.map(normalizeSetCode).filter(Boolean);
+  const setCodes = parsed.setCodes.flatMap(setCodeVariants).filter(Boolean);
   if (setCodes.length) {
     const matching = candidates.filter(card => setCodes.some(code => setCodeMatchesCard(code, card)));
     if (matching.length) candidates = matching;
@@ -783,7 +985,7 @@ async function fetchCards(language, filters, limit = 100) {
   const response = await fetch(`${API_BASE}/${language}/cards?${params.toString()}`);
   if (!response.ok) throw new Error(`TCGdex-Suche fehlgeschlagen: ${response.status}`);
   const json = await response.json();
-  return Array.isArray(json) ? json : [];
+  return (Array.isArray(json) ? json : []).map(card => ({ ...card, _dataLanguage: language }));
 }
 
 async function getSetsMap(language) {
@@ -841,20 +1043,36 @@ async function rankCandidates(candidates, parsed, language, scannedCanvases) {
 
 function scoreCardMetadata(card, parsed) {
   const cardName = normalizeText(card.name || "");
+  const cardBaseName = normalizeText(stripCardMechanics(card.name || ""));
+  const cardMechanics = mechanicsFromCardName(card.name || "");
   let score = 0;
 
-  if (parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) score += 170;
+  if (parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) score += 265;
   const denominator = parsed.identifiers[0]?.denominator;
-  if (denominator && Number(card._setBrief?.cardCount?.official) === Number(denominator)) score += 230;
-  if (parsed.setCodes.some(code => setCodeMatchesCard(code, card))) score += 105;
+  if (denominator && Number(card._setBrief?.cardCount?.official) === Number(denominator)) score += 320;
+  if (parsed.setCodes.flatMap(setCodeVariants).some(code => setCodeMatchesCard(code, card))) score += 115;
+
+  for (const mechanic of parsed.mechanics || []) {
+    if (cardMechanics.includes(mechanic)) score += mechanic === "mega" ? 105 : 72;
+    else if (mechanic === "ex" && /\bex\b/i.test(cardName)) score += 55;
+  }
 
   for (const hint of parsed.nameHints) {
     const normalizedHint = normalizeText(hint.value);
+    const hintBase = normalizeText(stripCardMechanics(hint.value));
     if (!normalizedHint) continue;
-    if (cardName === normalizedHint) score += 245;
-    else if (cardName.includes(normalizedHint) || normalizedHint.includes(cardName)) score += 175;
-    score += Math.round(similarity(cardName, normalizedHint) * 115);
-    score += Math.round(tokenOverlap(cardName, normalizedHint) * 55);
+    if (cardName === normalizedHint) score += 260;
+    else if (cardName.includes(normalizedHint) || normalizedHint.includes(cardName)) score += 185;
+    score += Math.round(similarity(cardName, normalizedHint) * 120);
+    score += Math.round(tokenOverlap(cardName, normalizedHint) * 60);
+
+    // Bei Mega-/ex-Logos ist die Mechanik oft grafisch statt als sauberer Text
+    // ausgeführt. Der Basisname („Stalobor“) wird daher separat verglichen.
+    if (hintBase && cardBaseName) {
+      if (hintBase === cardBaseName) score += 235;
+      else if (hintBase.includes(cardBaseName) || cardBaseName.includes(hintBase)) score += 155;
+      score += Math.round(similarity(cardBaseName, hintBase) * 105);
+    }
   }
 
   return score;
@@ -864,10 +1082,18 @@ async function enrichTopCandidates(ranked, language) {
   const top = ranked.slice(0, 10);
   const enriched = await mapWithConcurrency(top, 4, async card => {
     try {
-      const response = await fetch(`${API_BASE}/${language}/cards/${encodeURIComponent(card.id)}`);
+      const dataLanguage = card._dataLanguage || language;
+      const response = await fetch(`${API_BASE}/${dataLanguage}/cards/${encodeURIComponent(card.id)}`);
       if (!response.ok) return card;
       const full = await response.json();
-      return { ...card, ...full, _score: card._score, _metaScore: card._metaScore, _imageScore: card._imageScore };
+      return {
+        ...card,
+        ...full,
+        _dataLanguage: dataLanguage,
+        _score: card._score,
+        _metaScore: card._metaScore,
+        _imageScore: card._imageScore
+      };
     } catch {
       return card;
     }
@@ -878,7 +1104,8 @@ async function enrichTopCandidates(ranked, language) {
 function createCardDescriptor(canvas) {
   return {
     full: createImageVector(canvas, { x: 0.035, y: 0.025, width: 0.93, height: 0.95 }, 22, 31, "gray"),
-    art: createImageVector(canvas, { x: 0.07, y: 0.13, width: 0.86, height: 0.45 }, 24, 18, "edge"),
+    art: createImageVector(canvas, { x: 0.07, y: 0.12, width: 0.86, height: 0.48 }, 24, 19, "edge"),
+    footer: createImageVector(canvas, { x: 0.025, y: 0.73, width: 0.95, height: 0.25 }, 25, 10, "edge"),
     color: createImageVector(canvas, { x: 0.06, y: 0.08, width: 0.88, height: 0.83 }, 10, 14, "color")
   };
 }
@@ -925,8 +1152,9 @@ function createImageVector(canvas, region, columns, rows, mode) {
 function compareCardDescriptors(a, b) {
   const full = vectorCorrelation(a.full, b.full);
   const art = vectorCorrelation(a.art, b.art);
+  const footer = vectorCorrelation(a.footer, b.footer);
   const color = cosineSimilarity(a.color, b.color);
-  return clamp01(full * 0.34 + art * 0.51 + color * 0.15);
+  return clamp01(full * 0.18 + art * 0.42 + footer * 0.30 + color * 0.10);
 }
 
 function renderResults(cards, parsed) {
@@ -940,8 +1168,18 @@ function renderResults(cards, parsed) {
     ].filter(Boolean).join(" und ");
     els.resultMessage.className = "notice error";
     els.resultMessage.textContent = recognized
-      ? `Keine passende Karte zu ${recognized} gefunden. Prüfe die erkannten Angaben oder nutze die manuelle Suche.`
-      : "Keine passende Karte gefunden. Nutze den Live-Scanner erneut oder trage Name und Nummer manuell ein.";
+      ? `Keine Datenbankkarte zu ${recognized} gefunden. Bei sehr neuen Sets kann der Datensatz noch fehlen.`
+      : "Keine passende Datenbankkarte gefunden. Nutze den Live-Scanner erneut oder trage Name und Nummer manuell ein.";
+    const fallbackQuery = buildParsedSearchQuery(parsed);
+    if (fallbackQuery) {
+      const directLink = document.createElement("a");
+      directLink.className = "notice-action";
+      directLink.target = "_blank";
+      directLink.rel = "noopener noreferrer";
+      directLink.href = buildCardmarketSearchUrl(fallbackQuery);
+      directLink.textContent = `Trotzdem auf Cardmarket nach „${fallbackQuery}“ suchen`;
+      els.resultMessage.append(document.createElement("br"), directLink);
+    }
     els.resultMessage.classList.remove("hidden");
     els.resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
@@ -979,6 +1217,7 @@ function renderResults(cards, parsed) {
     if (index === 0) badges.append(createBadge("Bester Treffer", true));
     if (card._imageScore !== null && card._imageScore !== undefined) badges.append(createBadge(`Bild ${Math.round(card._imageScore * 100)} %`, card._imageScore >= 0.72));
     if (parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) badges.append(createBadge("Nummer passt", true));
+    if (card._dataLanguage && card._dataLanguage !== els.language.value) badges.append(createBadge("engl. Datenbank-Fallback", false));
 
     const meta = document.createElement("p");
     meta.className = "result-meta";
@@ -1041,12 +1280,23 @@ function buildPriceBox(pricing) {
 
 function buildCardmarketUrl(card, parsed, precise) {
   // Cardmarket findet Pokémon-Karten am stabilsten über Kartenname plus
-  // Sammlernummer. Interne TCGdex-Set-IDs (z. B. „ME01“) werden bewusst nicht
-  // mitgesendet, weil Cardmarket andere Setkürzel verwenden kann (z. B. „MEG“).
+  // Sammlernummer. Interne TCGdex-Set-IDs werden nicht mitgesendet, weil die
+  // Plattform andere Setkürzel verwenden kann.
   const queryParts = precise
     ? [card.name, normalizeCollectorNumber(card.localId || "")]
     : [card.name];
-  const params = new URLSearchParams({ searchString: queryParts.filter(Boolean).join(" ") });
+  return buildCardmarketSearchUrl(queryParts.filter(Boolean).join(" "));
+}
+
+function buildParsedSearchQuery(parsed) {
+  const number = parsed.identifiers?.[0]?.number || parsed.numbers?.[0] || "";
+  const bestName = parsed.nameHints?.find(item => stripCardMechanics(item.value).length >= 4)?.value || parsed.nameHints?.[0]?.value || "";
+  const setCode = parsed.identifiers?.[0]?.setCode || "";
+  return [bestName, setCode, number].filter(Boolean).join(" ").trim();
+}
+
+function buildCardmarketSearchUrl(query) {
+  const params = new URLSearchParams({ searchString: String(query || "").trim() });
   return `${CARDMARKET_SEARCH}?${params.toString()}`;
 }
 
@@ -1077,6 +1327,7 @@ function formatDebugText(ocr, parsed, selected) {
     `Schnelltest-Bewertung: ${Math.round(selected.quality)}`,
     `Ermittelter Kartenname: ${name}`,
     `Ermittelte Kennung: ${identifier}`,
+    `Erkannte Mechanik: ${parsed.mechanics?.length ? parsed.mechanics.join(", ") : "keine"}`,
     "",
     "--- OCR-Bereiche ---"
   ];
@@ -1457,15 +1708,72 @@ function numberVariants(number) {
   return [...variants].filter(Boolean);
 }
 
-function nameSearchVariants(name) {
+function nameSearchVariants(name, mechanics = []) {
   const clean = String(name || "").trim();
   if (clean.length < 3) return [];
   const variants = new Set([clean]);
-  const words = clean.split(/\s+/).filter(Boolean);
-  const longestWord = [...words].sort((a, b) => b.length - a.length)[0];
+  const base = stripCardMechanics(clean);
+  if (base.length >= 3) variants.add(base);
+
+  const words = clean.split(/[\s-]+/).filter(Boolean);
+  const longestWord = [...words]
+    .filter(word => !/^(mega|ex|gx|vmax|vstar|v)$/i.test(word))
+    .sort((a, b) => b.length - a.length)[0];
   if (longestWord?.length >= 4) variants.add(longestWord);
   if (clean.length >= 7) variants.add(clean.slice(0, -1));
-  return [...variants].slice(0, 4);
+
+  if (base && mechanics.includes("mega")) {
+    variants.add(`Mega-${base} ex`);
+    variants.add(`Mega ${base} ex`);
+    variants.add(`${base} ex`);
+  } else if (base && mechanics.includes("ex")) {
+    variants.add(`${base} ex`);
+  }
+
+  return [...variants].filter(value => value.length >= 3).slice(0, 8);
+}
+
+function stripCardMechanics(value) {
+  return String(value || "")
+    .replace(/[€£]/g, "e")
+    .replace(/mega[\s-]*/gi, "")
+    .replace(/(?:pok[eé]mon[-\s]*)?(?:ex|gx|vmax|vstar|v-union|break)/gi, "")
+    .replace(/tag[-\s]*team/gi, "")
+    .replace(/(?:radiant|strahlend(?:es|er|e)?|shining|gl[aä]nzend(?:es|er|e)?)/gi, "")
+    .replace(/[()\[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[-\s]+|[-\s]+$/g, "")
+    .trim();
+}
+
+function mechanicsFromCardName(value) {
+  const text = String(value || "").replace(/[€£]/g, "e").toLowerCase();
+  const result = [];
+  const add = mechanic => { if (!result.includes(mechanic)) result.push(mechanic); };
+  if (/mega|^m\s+[a-z]/i.test(text)) add("mega");
+  if (/ex/i.test(text)) add("ex");
+  if (/gx/i.test(text)) add("gx");
+  if (/vmax/i.test(text)) add("vmax");
+  if (/vstar|v-star/i.test(text)) add("vstar");
+  if (/v-union/i.test(text)) add("v-union");
+  if (/tag[-\s]*team/i.test(text)) add("tag-team");
+  if (/break/i.test(text)) add("break");
+  if (/radiant|strahlend/i.test(text)) add("radiant");
+  if (/shining|gl[aä]nzend/i.test(text)) add("shining");
+  return result;
+}
+
+function setCodeVariants(value) {
+  const clean = normalizeSetCode(value);
+  if (!clean) return [];
+  const variants = new Set([clean]);
+  // I, L und 1 sind in der winzigen Setzeile kaum unterscheidbar.
+  if (/[I1]/.test(clean)) variants.add(clean.replace(/[I1]/g, "L"));
+  if (/L/.test(clean)) {
+    variants.add(clean.replace(/L/g, "I"));
+    variants.add(clean.replace(/L/g, "1"));
+  }
+  return [...variants];
 }
 
 function collectorNumbersEqual(a, b) {
