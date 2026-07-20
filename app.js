@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "5.0";
+const APP_VERSION = "5.1";
 const CARD_WIDTH = 750;
 const CARD_HEIGHT = 1050;
 const MAX_RESULTS = 8;
@@ -219,28 +219,29 @@ async function handleImageSelection(event) {
 }
 
 async function prepareGalleryCanvases(sourceCanvas) {
-  const canvases = [];
-  let status = "mehrere Ausschnitte vorbereitet";
-
-  try {
-    const cv = await loadOpenCv(6500);
-    const detected = detectAndRectifyCard(sourceCanvas, cv);
-    if (detected) {
-      canvases.push(detected);
-      status = "Kartenrand automatisch erkannt";
-    }
-  } catch (error) {
-    console.warn("OpenCV-Kartenerkennung nicht verfügbar:", error);
-  }
-
-  // Fallback-Ausschnitte in unterschiedlichen Größen und leicht nach oben
-  // versetzt. Smartphone-Fotos enthalten unterhalb der Karte oft mehr Rand als
-  // oberhalb; eine reine Bildmitte würde dann Name oder Kartennummer abschneiden.
+  // Auf iPhones kann das große OpenCV-WebAssembly-Paket beim ersten Laden sehr
+  // lange initialisieren oder vom Browser angehalten werden. Deshalb darf es die
+  // Bildauswahl nicht mehr blockieren. Wir erzeugen sofort robuste Standard-
+  // ausschnitte und versuchen die automatische Kartenranderkennung nur kurz als
+  // optionale Verbesserung.
+  const fallbackCanvases = [];
   for (const [scale, verticalBias] of [[0.86, -0.030], [0.70, -0.030], [0.78, -0.065], [0.80, -0.040], [0.94, 0]]) {
-    canvases.push(centerCardCrop(sourceCanvas, scale, verticalBias));
+    fallbackCanvases.push(centerCardCrop(sourceCanvas, scale, verticalBias));
   }
 
-  return { canvases: deduplicateCanvasShapes(canvases), status };
+  let detected = null;
+  try {
+    const cv = await loadOpenCv(2200);
+    detected = detectAndRectifyCard(sourceCanvas, cv);
+  } catch (error) {
+    console.warn("Optionale OpenCV-Kartenerkennung übersprungen:", error);
+  }
+
+  const canvases = detected ? [detected, ...fallbackCanvases] : fallbackCanvases;
+  return {
+    canvases: deduplicateCanvasShapes(canvases),
+    status: detected ? "Kartenrand automatisch erkannt" : "schnelle Bildausschnitte vorbereitet"
+  };
 }
 
 function setPreparedCanvases(canvases, label, status) {
@@ -1381,7 +1382,16 @@ async function loadOpenCv(timeoutMs) {
   if (window.cv) {
     try { return await promiseWithTimeout(resolveCv(window.cv), timeoutMs); } catch { /* Skript eventuell noch nicht initialisiert. */ }
   }
-  if (openCvPromise) return promiseWithTimeout(openCvPromise, timeoutMs);
+  if (openCvPromise) {
+    try {
+      return await promiseWithTimeout(openCvPromise, timeoutMs);
+    } catch (error) {
+      // Eine beim vorherigen Versuch hängengebliebene Initialisierung darf
+      // spätere Galerieimporte nicht dauerhaft blockieren.
+      openCvPromise = null;
+      throw error;
+    }
+  }
 
   openCvPromise = new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[src="${OPENCV_URL}"]`);
@@ -1414,7 +1424,12 @@ async function loadOpenCv(timeoutMs) {
     finish();
   });
 
-  return promiseWithTimeout(openCvPromise, timeoutMs);
+  try {
+    return await promiseWithTimeout(openCvPromise, timeoutMs);
+  } catch (error) {
+    openCvPromise = null;
+    throw error;
+  }
 }
 
 function detectAndRectifyCard(sourceCanvas, cv) {
