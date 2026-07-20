@@ -1,9 +1,9 @@
 "use strict";
 
 const API_BASE = "https://api.tcgdex.net/v2";
-const CARDMARKET_BASE = "https://www.cardmarket.com/de/Pokemon/Products/Search";
+const CARDMARKET_BASE = "https://www.cardmarket.com/de/Pokemon/Products/Singles";
 const MAX_RESULTS = 8;
-const APP_VERSION = "2.0";
+const APP_VERSION = "3.0";
 
 const els = {
   cameraInput: document.querySelector("#cameraInput"),
@@ -115,26 +115,24 @@ async function analyzeSelectedImage() {
 }
 
 async function recognizeCardRegions(worker, image) {
-  // Wir legen zuerst ein Kartenformat von ungefähr 2,5 : 3,5 über das Foto.
-  // Dadurch bleiben die Suchbereiche auch bei etwas sichtbarem Hintergrund
-  // deutlich genauer als bei festen Ausschnitten des kompletten Fotos.
-  const cardFrame = estimateCardFrame(image);
-  const titleRegion = regionInsideFrame(cardFrame, 0.14, 0.025, 0.52, 0.105);
-  const numberRegion = regionInsideFrame(cardFrame, 0.07, 0.80, 0.52, 0.145);
+  // Pokémonkarten werden auf Fotos nicht immer gleich groß aufgenommen.
+  // Statt nur einen festen Kartenrahmen anzunehmen, prüfen wir mehrere
+  // realistische Kartengrößen. So werden Name und Nummer auch erkannt, wenn
+  // die Karte etwas weiter von der Kamera entfernt liegt.
+  const cardFrames = estimateCardFrames(image);
+  const titleRegions = cardFrames.map(frame => regionInsideFrame(frame, 0.08, 0.00, 0.72, 0.18));
+  const numberRegions = cardFrames.map(frame => regionInsideFrame(frame, 0.03, 0.80, 0.60, 0.17));
 
-  // Schwarze Namensschrift wird aus mehreren Helligkeitsstufen freigestellt.
-  // Das funktioniert wesentlich besser auf roten, blauen, grünen und anderen
-  // farbigen Kartenköpfen als eine reine Graustufenumwandlung.
-  const titleCanvas = createRegionComposite(image, titleRegion, [
-    { binaryMode: "dark", binaryThreshold: 45 },
-    { binaryMode: "dark", binaryThreshold: 60 },
-    { binaryMode: "dark", binaryThreshold: 80 }
-  ], 1500);
+  const titleCanvas = createMultiRegionComposite(image, titleRegions, [
+    { channel: "gray", contrast: 2.0, threshold: false, invert: false },
+    { binaryMode: "dark", binaryThreshold: 70 },
+    { binaryMode: "dark", binaryThreshold: 105 }
+  ], 1000);
 
   ocrProgressStage = {
     title: "Kartenname wird gelesen …",
     start: 12,
-    end: 43
+    end: 45
   };
   await worker.setParameters({
     tessedit_pageseg_mode: "6",
@@ -145,19 +143,18 @@ async function recognizeCardRegions(worker, image) {
   const titleRecognition = await worker.recognize(titleCanvas);
   const titleText = titleRecognition?.data?.text || "";
 
-  // Die Nummer ist bei vielen modernen Karten weiß mit dunkler Kontur. Daher
-  // werden hier sowohl helle Schriftanteile als auch normale Graustufen geprüft.
-  const numberCanvas = createRegionComposite(image, numberRegion, [
-    { binaryMode: "light", binaryThreshold: 105 },
-    { binaryMode: "light", binaryThreshold: 135 },
-    { binaryMode: "light", binaryThreshold: 165 },
-    { channel: "max", contrast: 1.65, threshold: false, invert: false }
-  ], 1500);
+  // Die Sammlernummer kann schwarz, weiß oder mit Kontur gedruckt sein.
+  // Mehrere Kartenrahmen und Bildvarianten werden deshalb gemeinsam geprüft.
+  const numberCanvas = createMultiRegionComposite(image, numberRegions, [
+    { channel: "gray", contrast: 2.3, threshold: false, invert: false },
+    { binaryMode: "dark", binaryThreshold: 85 },
+    { channel: "max", contrast: 1.8, threshold: false, invert: false }
+  ], 1150);
 
   ocrProgressStage = {
     title: "Kartennummer wird gelesen …",
-    start: 44,
-    end: 70
+    start: 46,
+    end: 76
   };
   await worker.setParameters({
     tessedit_pageseg_mode: "6",
@@ -171,16 +168,16 @@ async function recognizeCardRegions(worker, image) {
   const quickParsed = parseOcrSections({ titleText, numberText, fallbackText: "" });
   let fallbackText = "";
   if (!quickParsed.nameHints.length) {
-    const fallbackRegion = regionInsideFrame(cardFrame, 0.05, 0.00, 0.88, 0.24);
-    const fallbackCanvas = createRegionComposite(image, fallbackRegion, [
-      { binaryMode: "dark", binaryThreshold: 50 },
-      { binaryMode: "dark", binaryThreshold: 75 }
-    ], 1650);
+    const fallbackRegions = cardFrames.map(frame => regionInsideFrame(frame, 0.04, 0.00, 0.90, 0.27));
+    const fallbackCanvas = createMultiRegionComposite(image, fallbackRegions, [
+      { channel: "gray", contrast: 2.0, threshold: false, invert: false },
+      { binaryMode: "dark", binaryThreshold: 80 }
+    ], 1050);
 
     ocrProgressStage = {
       title: "Zusätzlicher Kartenbereich wird geprüft …",
-      start: 71,
-      end: 78
+      start: 77,
+      end: 81
     };
     await worker.setParameters({
       tessedit_pageseg_mode: "6",
@@ -195,17 +192,17 @@ async function recognizeCardRegions(worker, image) {
   return { titleText, numberText, fallbackText };
 }
 
-function estimateCardFrame(image) {
-  const cardRatio = 2.5 / 3.5;
-  const imageRatio = image.naturalWidth / image.naturalHeight;
-  let width;
-  let height;
+function estimateCardFrames(image) {
+  return [0.72, 0.83, 0.94].map(scale => estimateCardFrame(image, scale));
+}
 
-  if (imageRatio > cardRatio) {
-    height = image.naturalHeight * 0.94;
-    width = height * cardRatio;
-  } else {
-    width = image.naturalWidth * 0.94;
+function estimateCardFrame(image, scale = 0.94) {
+  const cardRatio = 2.5 / 3.5;
+  let height = image.naturalHeight * scale;
+  let width = height * cardRatio;
+
+  if (width > image.naturalWidth * 0.98) {
+    width = image.naturalWidth * 0.98;
     height = width / cardRatio;
   }
 
@@ -275,6 +272,36 @@ async function getOcrWorker(language) {
 
   ocrWorker = { language, worker };
   return worker;
+}
+
+function createMultiRegionComposite(image, regions, variants, targetWidth) {
+  const processed = [];
+  for (const region of regions) {
+    for (const variant of variants) {
+      processed.push(createProcessedRegion(image, region, variant, targetWidth));
+    }
+  }
+
+  const gap = 18;
+  const padding = 26;
+  const width = Math.max(...processed.map(canvas => canvas.width)) + padding * 2;
+  const height = processed.reduce((sum, canvas) => sum + canvas.height, 0)
+    + gap * Math.max(0, processed.length - 1)
+    + padding * 2;
+
+  const composite = document.createElement("canvas");
+  composite.width = width;
+  composite.height = height;
+  const ctx = composite.getContext("2d");
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, width, height);
+
+  let y = padding;
+  for (const canvas of processed) {
+    ctx.drawImage(canvas, padding, y);
+    y += canvas.height + gap;
+  }
+  return composite;
 }
 
 function createRegionComposite(image, region, variants, targetWidth) {
@@ -500,6 +527,26 @@ function extractCollectorNumbers(text) {
         && denominatorValue >= 10 && numeratorValue <= denominatorValue) {
         addNumber(numerator, 100);
       }
+    }
+  }
+
+  // Der Schrägstrich wird von OCR häufig komplett verschluckt, zum Beispiel
+  // "030 132" statt "030/132". Solche plausiblen Zahlenpaare werden ebenfalls
+  // als Sammlernummer ausgewertet.
+  const spacedPairPattern = /(?:^|[^0-9O])([0-9O]{1,3})\s+([0-9O]{2,3})(?=$|[^0-9O])/g;
+  for (const line of lines) {
+    for (const match of line.matchAll(spacedPairPattern)) {
+      const numerator = match[1].replace(/O/g, "0");
+      const denominator = match[2].replace(/O/g, "0");
+      const numeratorValue = Number(numerator);
+      const denominatorValue = Number(denominator);
+      if (!Number.isFinite(numeratorValue) || !Number.isFinite(denominatorValue)) continue;
+      if (denominatorValue < 20 || denominatorValue > 400 || numeratorValue < 1 || numeratorValue > denominatorValue) continue;
+      if (numeratorValue < 10 && !numerator.startsWith("0")) continue;
+      let score = 72;
+      if (numerator.startsWith("0")) score += 14;
+      if (denominatorValue >= 100) score += 6;
+      addNumber(numerator, score);
     }
   }
 
@@ -741,7 +788,11 @@ function renderResults(cards, parsed) {
 }
 
 function buildCardmarketUrl(card) {
-  const queryParts = [card.name, card.set?.name, card.localId].filter(Boolean);
+  // Cardmarket behandelt mehrere Suchwörter als starke Eingrenzung. Der
+  // übersetzte Setname aus TCGdex kann dort anders heißen und führte deshalb
+  // teilweise zu null Treffern. Name + Sammlernummer ist deutlich robuster.
+  const number = normalizeCollectorNumber(card.localId || "");
+  const queryParts = [card.name, number].filter(Boolean);
   const params = new URLSearchParams({ searchString: queryParts.join(" ") });
   return `${CARDMARKET_BASE}?${params.toString()}`;
 }
