@@ -612,3 +612,10 @@ footer p { margin: 4px 0; color: #7f889a; font-size: 11px; line-height: 1.45; }
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+
+.ai-status { margin: 14px 0 0; font-size: .9rem; line-height: 1.45; }
+.ai-status.success { color: #9be7ad; }
+.ai-status.error { color: #ff9aa8; }
+.ai-status.muted { color: var(--muted, #aeb5c5); }
+.ai-panel input[type="url"], .ai-panel input[type="password"] { width: 100%; }

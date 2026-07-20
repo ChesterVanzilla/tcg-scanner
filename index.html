@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
   <title>CardScan CM</title>
 </head>
 <body>
@@ -91,6 +91,27 @@
         <div id="results" class="card-results"></div>
       </section>
 
+      <section class="panel ai-panel">
+        <details>
+          <summary>KI-Bilderkennung verbinden</summary>
+          <div class="manual-content">
+            <p>Für den neuen bildbasierten Modus wird ein kleiner privater Cloudflare-Worker benötigt. Ohne Verbindung arbeitet die bisherige lokale Hybrid-Erkennung weiter.</p>
+            <div class="form-grid">
+              <label>
+                Worker-Adresse
+                <input id="aiEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="https://cardscan-ai.DEIN-NAME.workers.dev" />
+              </label>
+              <label>
+                Privater Schlüssel
+                <input id="aiSecret" type="password" autocomplete="off" placeholder="dein selbst gewählter Schlüssel" />
+              </label>
+            </div>
+            <button id="saveAiSettingsButton" class="secondary-button wide-button" type="button">KI-Verbindung speichern</button>
+            <p id="aiStatus" class="ai-status muted"></p>
+          </div>
+        </details>
+      </section>
+
       <section id="manualPanel" class="panel manual-panel">
         <details>
           <summary>Karte manuell suchen</summary>
@@ -154,6 +175,6 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="app.js?v=5" defer></script>
+  <script src="app.js?v=6" defer></script>
 </body>
 </html>

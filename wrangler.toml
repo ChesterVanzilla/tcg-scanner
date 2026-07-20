@@ -1,0 +1,9 @@
+name = "cardscan-ai"
+main = "src.js"
+compatibility_date = "2026-07-01"
+
+[ai]
+binding = "AI"
+
+[vars]
+ALLOWED_ORIGIN = "https://chestervanzilla.github.io"

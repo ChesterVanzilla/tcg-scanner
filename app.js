@@ -3,7 +3,9 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "5.1";
+const APP_VERSION = "6.0";
+const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
+const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
 const CARD_HEIGHT = 1050;
 const MAX_RESULTS = 8;
@@ -43,7 +45,11 @@ const els = {
   shadeLeft: document.querySelector(".shade-left"),
   shadeRight: document.querySelector(".shade-right"),
   sourceCanvas: document.querySelector("#sourceCanvas"),
-  cardCanvas: document.querySelector("#cardCanvas")
+  cardCanvas: document.querySelector("#cardCanvas"),
+  aiEndpoint: document.querySelector("#aiEndpoint"),
+  aiSecret: document.querySelector("#aiSecret"),
+  saveAiSettingsButton: document.querySelector("#saveAiSettingsButton"),
+  aiStatus: document.querySelector("#aiStatus")
 };
 
 let preparedCanvases = [];
@@ -54,6 +60,8 @@ let openCvPromise = null;
 let ocrProgressStage = { title: "Texterkennung läuft …", start: 10, end: 70 };
 let lastParsed = null;
 
+loadAiSettings();
+
 els.openScannerButton.addEventListener("click", openLiveScanner);
 els.closeScannerButton.addEventListener("click", closeLiveScanner);
 els.captureButton.addEventListener("click", captureLiveCard);
@@ -62,6 +70,7 @@ els.galleryInput.addEventListener("change", handleImageSelection);
 els.analyzeButton.addEventListener("click", analyzePreparedCard);
 els.manualSearchButton.addEventListener("click", manualSearch);
 els.language.addEventListener("change", clearResults);
+els.saveAiSettingsButton?.addEventListener("click", saveAiSettings);
 window.addEventListener("resize", updateScannerShades);
 window.addEventListener("pagehide", stopCameraStream);
 
@@ -256,6 +265,120 @@ function setPreparedCanvases(canvases, label, status) {
   els.previewWrap.classList.remove("hidden");
 }
 
+
+function loadAiSettings() {
+  if (!els.aiEndpoint) return;
+  els.aiEndpoint.value = localStorage.getItem(AI_ENDPOINT_KEY) || "";
+  els.aiSecret.value = localStorage.getItem(AI_SECRET_KEY) || "";
+  updateAiStatus();
+}
+
+function saveAiSettings() {
+  const endpoint = String(els.aiEndpoint?.value || "").trim().replace(/\/+$/, "");
+  const secret = String(els.aiSecret?.value || "").trim();
+  if (endpoint && !/^https:\/\//i.test(endpoint)) {
+    els.aiStatus.textContent = "Bitte eine vollständige HTTPS-Adresse eintragen.";
+    els.aiStatus.className = "ai-status error";
+    return;
+  }
+  localStorage.setItem(AI_ENDPOINT_KEY, endpoint);
+  localStorage.setItem(AI_SECRET_KEY, secret);
+  updateAiStatus();
+}
+
+function updateAiStatus() {
+  if (!els.aiStatus) return;
+  const endpoint = getAiEndpoint();
+  els.aiStatus.textContent = endpoint
+    ? "KI-Erkennung aktiv. OCR und Bildvergleich bleiben als Rückfallebene eingeschaltet."
+    : "Noch nicht verbunden. Die App nutzt weiterhin die lokale Hybrid-Erkennung.";
+  els.aiStatus.className = `ai-status ${endpoint ? "success" : "muted"}`;
+}
+
+function getAiEndpoint() {
+  return String(localStorage.getItem(AI_ENDPOINT_KEY) || "").trim().replace(/\/+$/, "");
+}
+
+async function identifyCardWithAi(canvas) {
+  const endpoint = getAiEndpoint();
+  if (!endpoint) return null;
+
+  const uploadCanvas = createCanvas(720, 1008);
+  const ctx = uploadCanvas.getContext("2d");
+  ctx.drawImage(canvas, 0, 0, uploadCanvas.width, uploadCanvas.height);
+  const image = uploadCanvas.toDataURL("image/jpeg", 0.84);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const headers = { "content-type": "application/json" };
+    const secret = String(localStorage.getItem(AI_SECRET_KEY) || "").trim();
+    if (secret) headers["x-scanner-key"] = secret;
+    const response = await fetch(`${endpoint}/identify`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ image, language: els.language.value }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`KI-Dienst antwortet mit ${response.status}`);
+    const result = await response.json();
+    if (!result || typeof result !== "object") throw new Error("Ungültige KI-Antwort");
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function mergeAiResultIntoParsed(parsed, ai) {
+  if (!ai) return parsed;
+  const name = String(ai.name || "").trim();
+  const number = normalizeCollectorNumber(ai.number || "");
+  const denominator = String(ai.denominator || "").replace(/\D/g, "");
+  const setCode = String(ai.setCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  const confidence = Math.max(0, Math.min(1, Number(ai.confidence) || 0));
+
+  const nameHints = [...parsed.nameHints];
+  if (name) {
+    nameHints.unshift({
+      value: name,
+      score: 245 + confidence * 90,
+      confidence: Math.round(confidence * 100),
+      source: "KI-Bilderkennung"
+    });
+  }
+
+  const identifiers = [...parsed.identifiers];
+  if (number) {
+    identifiers.unshift({
+      number,
+      denominator: denominator || null,
+      setCode: setCode || null,
+      score: 255 + confidence * 80,
+      source: "KI-Bilderkennung",
+      raw: [setCode, number, denominator ? `/${denominator}` : ""].filter(Boolean).join(" ")
+    });
+  }
+
+  return {
+    ...parsed,
+    ai,
+    nameHints: dedupeBy(nameHints, item => normalizeText(item.value)).slice(0, 14),
+    identifiers: dedupeBy(identifiers, item => `${item.setCode || ""}|${item.number || ""}|${item.denominator || ""}`).slice(0, 14),
+    numbers: unique([number, ...parsed.numbers].filter(Boolean)),
+    denominators: unique([denominator, ...parsed.denominators].filter(Boolean)),
+    setCodes: unique([setCode, ...parsed.setCodes].filter(Boolean))
+  };
+}
+
+function dedupeBy(items, keyFn) {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function analyzePreparedCard() {
   if (!preparedCanvases.length) return;
   setBusy(true);
@@ -271,12 +394,23 @@ async function analyzePreparedCard() {
     els.previewImage.src = selected.canvas.toDataURL("image/jpeg", 0.92);
 
     const ocr = await recognizeDetailedCard(worker, selected.canvas, selected.quick);
-    const parsed = parseOcrObservations(ocr.observations);
+    let parsed = parseOcrObservations(ocr.observations);
+
+    let aiResult = null;
+    if (getAiEndpoint()) {
+      setProgress("KI-Bilderkennung prüft die Karte …", 67);
+      try {
+        aiResult = await identifyCardWithAi(selected.canvas);
+        parsed = mergeAiResultIntoParsed(parsed, aiResult);
+      } catch (error) {
+        console.warn("KI-Erkennung nicht verfügbar, lokale Erkennung läuft weiter:", error);
+      }
+    }
     lastParsed = parsed;
 
     els.manualName.value = parsed.nameHints[0]?.value || "";
     els.manualNumber.value = formatIdentifierForInput(parsed.identifiers[0]);
-    els.ocrText.textContent = formatDebugText(ocr, parsed, selected);
+    els.ocrText.textContent = formatDebugText(ocr, parsed, selected, aiResult);
     els.debugPanel.classList.remove("hidden");
 
     setProgress("Kartendatenbank wird durchsucht …", 70);
@@ -1318,11 +1452,13 @@ function createBadge(text, strong) {
   return badge;
 }
 
-function formatDebugText(ocr, parsed, selected) {
+function formatDebugText(ocr, parsed, selected, aiResult = null) {
   const name = parsed.nameHints[0]?.value || "nicht sicher erkannt";
   const identifier = parsed.identifiers[0] ? formatIdentifierForInput(parsed.identifiers[0]) : "nicht sicher erkannt";
   const blocks = [
     `CardScan CM v${APP_VERSION}`,
+    `KI-Modus: ${getAiEndpoint() ? "aktiv" : "nicht verbunden"}`,
+    `KI-Antwort: ${aiResult ? JSON.stringify(aiResult) : "keine"}`,
     `Verwendeter Bildausschnitt: ${selected.canvasIndex + 1}`,
     `Ausrichtung: ${selected.rotation}°`,
     `Schnelltest-Bewertung: ${Math.round(selected.quality)}`,
