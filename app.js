@@ -3,6 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_BASE = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const MAX_RESULTS = 8;
+const APP_VERSION = "2.0";
 
 const els = {
   cameraInput: document.querySelector("#cameraInput"),
@@ -22,13 +23,17 @@ const els = {
   manualNumber: document.querySelector("#manualNumber"),
   manualSearchButton: document.querySelector("#manualSearchButton"),
   debugPanel: document.querySelector("#debugPanel"),
-  ocrText: document.querySelector("#ocrText"),
-  workCanvas: document.querySelector("#workCanvas")
+  ocrText: document.querySelector("#ocrText")
 };
 
 let selectedFile = null;
 let selectedObjectUrl = null;
 let ocrWorker = null;
+let ocrProgressStage = {
+  title: "Texterkennung läuft …",
+  start: 12,
+  end: 78
+};
 
 for (const input of [els.cameraInput, els.galleryInput]) {
   input.addEventListener("change", handleImageSelection);
@@ -40,10 +45,13 @@ els.language.addEventListener("change", () => {
 });
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {
-      // Die App funktioniert auch ohne Offline-Cache.
-    });
+  window.addEventListener("load", async () => {
+    try {
+      const registration = await navigator.serviceWorker.register("./service-worker.js");
+      registration.update().catch(() => {});
+    } catch {
+      // Die App funktioniert online auch ohne Offline-Cache.
+    }
   });
 }
 
@@ -76,18 +84,15 @@ async function analyzeSelectedImage() {
   try {
     setProgress("Bild wird vorbereitet …", 4);
     const sourceImage = await loadImage(selectedObjectUrl);
-    const preparedImage = prepareOcrComposite(sourceImage);
-
     const language = els.language.value === "de" ? "deu+eng" : "eng";
+
     setProgress("Texterkennung wird geladen …", 8);
     const worker = await getOcrWorker(language);
 
-    setProgress("Name und Kartennummer werden gelesen …", 12);
-    const recognition = await worker.recognize(preparedImage);
-    const rawText = recognition?.data?.text || "";
-    const parsed = parseOcrText(rawText);
+    const ocrSections = await recognizeCardRegions(worker, sourceImage);
+    const parsed = parseOcrSections(ocrSections);
 
-    els.ocrText.textContent = rawText.trim() || "Kein Text erkannt.";
+    els.ocrText.textContent = formatDebugText(ocrSections, parsed);
     els.debugPanel.classList.remove("hidden");
     els.manualNumber.value = parsed.numbers[0] || "";
     els.manualName.value = parsed.nameHints[0] || "";
@@ -107,6 +112,120 @@ async function analyzeSelectedImage() {
   } finally {
     setTimeout(() => setBusy(false), 250);
   }
+}
+
+async function recognizeCardRegions(worker, image) {
+  // Wir legen zuerst ein Kartenformat von ungefähr 2,5 : 3,5 über das Foto.
+  // Dadurch bleiben die Suchbereiche auch bei etwas sichtbarem Hintergrund
+  // deutlich genauer als bei festen Ausschnitten des kompletten Fotos.
+  const cardFrame = estimateCardFrame(image);
+  const titleRegion = regionInsideFrame(cardFrame, 0.14, 0.025, 0.52, 0.105);
+  const numberRegion = regionInsideFrame(cardFrame, 0.07, 0.80, 0.52, 0.145);
+
+  // Schwarze Namensschrift wird aus mehreren Helligkeitsstufen freigestellt.
+  // Das funktioniert wesentlich besser auf roten, blauen, grünen und anderen
+  // farbigen Kartenköpfen als eine reine Graustufenumwandlung.
+  const titleCanvas = createRegionComposite(image, titleRegion, [
+    { binaryMode: "dark", binaryThreshold: 45 },
+    { binaryMode: "dark", binaryThreshold: 60 },
+    { binaryMode: "dark", binaryThreshold: 80 }
+  ], 1500);
+
+  ocrProgressStage = {
+    title: "Kartenname wird gelesen …",
+    start: 12,
+    end: 43
+  };
+  await worker.setParameters({
+    tessedit_pageseg_mode: "6",
+    tessedit_char_whitelist: "",
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300"
+  });
+  const titleRecognition = await worker.recognize(titleCanvas);
+  const titleText = titleRecognition?.data?.text || "";
+
+  // Die Nummer ist bei vielen modernen Karten weiß mit dunkler Kontur. Daher
+  // werden hier sowohl helle Schriftanteile als auch normale Graustufen geprüft.
+  const numberCanvas = createRegionComposite(image, numberRegion, [
+    { binaryMode: "light", binaryThreshold: 105 },
+    { binaryMode: "light", binaryThreshold: 135 },
+    { binaryMode: "light", binaryThreshold: 165 },
+    { channel: "max", contrast: 1.65, threshold: false, invert: false }
+  ], 1500);
+
+  ocrProgressStage = {
+    title: "Kartennummer wird gelesen …",
+    start: 44,
+    end: 70
+  };
+  await worker.setParameters({
+    tessedit_pageseg_mode: "6",
+    tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöü0123456789/ -",
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300"
+  });
+  const numberRecognition = await worker.recognize(numberCanvas);
+  const numberText = numberRecognition?.data?.text || "";
+
+  const quickParsed = parseOcrSections({ titleText, numberText, fallbackText: "" });
+  let fallbackText = "";
+  if (!quickParsed.nameHints.length) {
+    const fallbackRegion = regionInsideFrame(cardFrame, 0.05, 0.00, 0.88, 0.24);
+    const fallbackCanvas = createRegionComposite(image, fallbackRegion, [
+      { binaryMode: "dark", binaryThreshold: 50 },
+      { binaryMode: "dark", binaryThreshold: 75 }
+    ], 1650);
+
+    ocrProgressStage = {
+      title: "Zusätzlicher Kartenbereich wird geprüft …",
+      start: 71,
+      end: 78
+    };
+    await worker.setParameters({
+      tessedit_pageseg_mode: "6",
+      tessedit_char_whitelist: "",
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300"
+    });
+    const fallbackRecognition = await worker.recognize(fallbackCanvas);
+    fallbackText = fallbackRecognition?.data?.text || "";
+  }
+
+  return { titleText, numberText, fallbackText };
+}
+
+function estimateCardFrame(image) {
+  const cardRatio = 2.5 / 3.5;
+  const imageRatio = image.naturalWidth / image.naturalHeight;
+  let width;
+  let height;
+
+  if (imageRatio > cardRatio) {
+    height = image.naturalHeight * 0.94;
+    width = height * cardRatio;
+  } else {
+    width = image.naturalWidth * 0.94;
+    height = width / cardRatio;
+  }
+
+  return {
+    x: (image.naturalWidth - width) / 2,
+    y: (image.naturalHeight - height) / 2,
+    width,
+    height,
+    imageWidth: image.naturalWidth,
+    imageHeight: image.naturalHeight
+  };
+}
+
+function regionInsideFrame(frame, x, y, width, height) {
+  return {
+    x: (frame.x + frame.width * x) / frame.imageWidth,
+    y: (frame.y + frame.height * y) / frame.imageHeight,
+    width: (frame.width * width) / frame.imageWidth,
+    height: (frame.height * height) / frame.imageHeight
+  };
 }
 
 async function manualSearch() {
@@ -147,113 +266,143 @@ async function getOcrWorker(language) {
   const worker = await Tesseract.createWorker(language, 1, {
     logger: message => {
       if (message.status === "recognizing text") {
-        const percent = Math.max(12, Math.min(78, 12 + Math.round((message.progress || 0) * 66)));
-        setProgress("Name und Kartennummer werden gelesen …", percent);
+        const range = ocrProgressStage.end - ocrProgressStage.start;
+        const percent = ocrProgressStage.start + Math.round((message.progress || 0) * range);
+        setProgress(ocrProgressStage.title, percent);
       }
     }
   });
-  await worker.setParameters({
-    preserve_interword_spaces: "1",
-    user_defined_dpi: "300"
-  });
+
   ocrWorker = { language, worker };
   return worker;
 }
 
-function prepareOcrComposite(image) {
-  const canvas = els.workCanvas;
-  const maxWidth = 1500;
-  const scale = Math.min(2.2, maxWidth / image.naturalWidth);
-  const width = Math.max(800, Math.round(image.naturalWidth * scale));
-  const height = Math.round(image.naturalHeight * scale);
+function createRegionComposite(image, region, variants, targetWidth) {
+  const processed = variants.map(variant => createProcessedRegion(image, region, variant, targetWidth));
+  const gap = 28;
+  const padding = 34;
+  const width = Math.max(...processed.map(canvas => canvas.width)) + padding * 2;
+  const height = processed.reduce((sum, canvas) => sum + canvas.height, 0)
+    + gap * Math.max(0, processed.length - 1)
+    + padding * 2;
 
-  const topHeight = Math.round(height * 0.32);
-  const bottomStart = Math.round(height * 0.68);
-  const bottomHeight = height - bottomStart;
-  const gap = 30;
-  canvas.width = width;
-  canvas.height = topHeight + bottomHeight + gap;
-
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const composite = document.createElement("canvas");
+  composite.width = width;
+  composite.height = height;
+  const ctx = composite.getContext("2d");
   ctx.fillStyle = "white";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight * 0.32, 0, 0, width, topHeight);
+  ctx.fillRect(0, 0, width, height);
+
+  let y = padding;
+  for (const canvas of processed) {
+    ctx.drawImage(canvas, padding, y);
+    y += canvas.height + gap;
+  }
+  return composite;
+}
+
+function createProcessedRegion(image, region, variant, targetWidth) {
+  const sourceWidth = Math.max(1, Math.round(image.naturalWidth * region.width));
+  const sourceHeight = Math.max(1, Math.round(image.naturalHeight * region.height));
+  const width = Math.max(900, Math.min(targetWidth, Math.round(sourceWidth * 3.1)));
+  const height = Math.max(120, Math.round(sourceHeight * (width / sourceWidth)));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(
     image,
+    Math.round(image.naturalWidth * region.x),
+    Math.round(image.naturalHeight * region.y),
+    sourceWidth,
+    sourceHeight,
     0,
-    image.naturalHeight * 0.68,
-    image.naturalWidth,
-    image.naturalHeight * 0.32,
     0,
-    topHeight + gap,
     width,
-    bottomHeight
+    height
   );
 
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const pixels = data.data;
-  for (let i = 0; i < pixels.length; i += 4) {
-    const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
-    pixels[i] = pixels[i + 1] = pixels[i + 2] = contrasted;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+  const grayValues = new Uint8Array(width * height);
+
+  for (let index = 0, pixel = 0; index < pixels.length; index += 4, pixel += 1) {
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+
+    if (variant.binaryMode === "dark") {
+      // Dunkle Schrift wird schwarz, der farbige Hintergrund weiß.
+      grayValues[pixel] = Math.max(red, green, blue) < variant.binaryThreshold ? 0 : 255;
+      continue;
+    }
+    if (variant.binaryMode === "light") {
+      // Helle Schrift wird schwarz, der farbige Hintergrund weiß.
+      grayValues[pixel] = Math.min(red, green, blue) > variant.binaryThreshold ? 0 : 255;
+      continue;
+    }
+
+    let gray = variant.channel === "max"
+      ? Math.max(red, green, blue)
+      : Math.round(0.299 * red + 0.587 * green + 0.114 * blue);
+
+    gray = Math.max(0, Math.min(255, (gray - 128) * (variant.contrast || 1) + 128));
+    if (variant.invert) gray = 255 - gray;
+    grayValues[pixel] = gray;
   }
-  ctx.putImageData(data, 0, 0);
+
+  const threshold = variant.threshold ? otsuThreshold(grayValues) : null;
+  for (let index = 0, pixel = 0; index < pixels.length; index += 4, pixel += 1) {
+    const gray = threshold === null ? grayValues[pixel] : (grayValues[pixel] >= threshold ? 255 : 0);
+    pixels[index] = gray;
+    pixels[index + 1] = gray;
+    pixels[index + 2] = gray;
+    pixels[index + 3] = 255;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
   return canvas;
 }
 
-function parseOcrText(rawText) {
-  const lines = rawText
-    .split(/\r?\n/)
-    .map(line => line.replace(/[|©®™]/g, " ").replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+function otsuThreshold(values) {
+  const histogram = new Uint32Array(256);
+  for (const value of values) histogram[value] += 1;
 
-  const numbers = [];
-  const joined = lines.join(" ");
-  const slashPattern = /\b([A-Z]{0,5}\s*[- ]?\s*\d{1,3})\s*[\/]\s*(\d{1,3})\b/gi;
-  const promoPattern = /\b(?:SVP|SWSH|SM|XY|BW)\s*(?:EN|DE)?\s*[- ]?\s*(\d{1,3})\b/gi;
+  const total = values.length;
+  let sum = 0;
+  for (let index = 0; index < 256; index += 1) sum += index * histogram[index];
 
-  for (const match of joined.matchAll(slashPattern)) {
-    const normalized = normalizeCollectorNumber(match[1]);
-    if (normalized && !numbers.includes(normalized)) numbers.push(normalized);
-  }
-  for (const match of joined.matchAll(promoPattern)) {
-    const normalized = normalizeCollectorNumber(match[1]);
-    if (normalized && !numbers.includes(normalized)) numbers.push(normalized);
-  }
+  let sumBackground = 0;
+  let weightBackground = 0;
+  let maximumVariance = 0;
+  let threshold = 128;
 
-  // Fallback: typische Nummernzeile im unteren Kartenbereich.
-  if (!numbers.length) {
-    for (const line of lines.slice(-8)) {
-      const match = line.match(/(?:^|\s)([A-Z]{0,3}\d{1,3}|\d{2,3})(?:\s|$)/i);
-      if (match) {
-        const normalized = normalizeCollectorNumber(match[1]);
-        if (normalized && !numbers.includes(normalized)) numbers.push(normalized);
-      }
+  for (let index = 0; index < 256; index += 1) {
+    weightBackground += histogram[index];
+    if (!weightBackground) continue;
+    const weightForeground = total - weightBackground;
+    if (!weightForeground) break;
+
+    sumBackground += index * histogram[index];
+    const meanBackground = sumBackground / weightBackground;
+    const meanForeground = (sum - sumBackground) / weightForeground;
+    const variance = weightBackground * weightForeground * (meanBackground - meanForeground) ** 2;
+
+    if (variance > maximumVariance) {
+      maximumVariance = variance;
+      threshold = index;
     }
   }
+  return threshold;
+}
 
-  const stopWords = new Set([
-    "basic", "stage", "phase", "basis", "pokemon", "pokémon", "trainer", "energy", "energie",
-    "ability", "fähigkeit", "attack", "schaden", "damage", "weakness", "resistance", "retreat",
-    "schwäche", "resistenz", "rückzug", "illus", "illustrator", "copyright", "level", "item",
-    "unterstützer", "supporter", "stadium", "regel", "rule", "hp", "kp", "ex", "gx", "vmax", "vstar"
-  ]);
-
-  const nameHints = lines
-    .slice(0, Math.max(5, Math.ceil(lines.length * 0.5)))
-    .map(line => line
-      .replace(/\b(?:HP|KP)\s*\d{1,3}\b/gi, "")
-      .replace(/\b(?:BASIC|BASIS|STAGE\s*\d|PHASE\s*\d)\b/gi, "")
-      .replace(/[0-9/\\()[\]{}<>©®™_*+=:;,.!?]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim())
-    .filter(line => line.length >= 3 && line.length <= 34)
-    .filter(line => {
-      const words = normalizeText(line).split(" ").filter(Boolean);
-      return words.some(word => word.length >= 3 && !stopWords.has(word));
-    })
-    .filter((line, index, array) => array.findIndex(other => normalizeText(other) === normalizeText(line)) === index)
-    .slice(0, 6);
+function parseOcrSections({ titleText = "", numberText = "", fallbackText = "" }) {
+  const nameHints = extractNameHints([titleText, fallbackText].filter(Boolean).join("\n"));
+  const numbers = extractCollectorNumbers([numberText, fallbackText].filter(Boolean).join("\n"));
+  const rawText = [titleText, numberText, fallbackText].filter(Boolean).join("\n");
 
   return {
     rawText,
@@ -263,19 +412,187 @@ function parseOcrText(rawText) {
   };
 }
 
+function extractNameHints(text) {
+  const rejectPatterns = [
+    /entwickelt\s+sich\s+aus/i,
+    /\bentw[a-zäöüß]{2,12}lt\b.*\baus\b/i,
+    /evolves?\s+from/i,
+    /entwicklung/i,
+    /weakness|resistance|retreat|damage|ability/i,
+    /schw[aä]che|resistenz|r[uü]ckzug|f[aä]higkeit|schaden/i,
+    /illustrator|illustration|copyright|pokemon\/nintendo/i,
+    /wirf|lege|deines\s+gegners|dein\s+gegner|angriff/i,
+    /attack|during|opponent|energy|energie/i
+  ];
+
+  const stopWords = new Set([
+    "basic", "basis", "stage", "phase", "pokemon", "pokémon", "trainer", "energy", "energie",
+    "ability", "fähigkeit", "attack", "schaden", "damage", "weakness", "resistance", "retreat",
+    "schwäche", "resistenz", "rückzug", "illus", "illustrator", "copyright", "level", "item",
+    "unterstützer", "supporter", "stadium", "regel", "rule", "hp", "kp"
+  ]);
+
+  const candidates = text
+    .split(/\r?\n/)
+    .map(cleanOcrLine)
+    .filter(Boolean)
+    .filter(line => !rejectPatterns.some(pattern => pattern.test(line)))
+    .map(line => line
+      .replace(/\b(?:PHASE|STAGE)\s*[12I]\b/gi, " ")
+      .replace(/\b(?:BASIC|BASIS)\b/gi, " ")
+      .replace(/\b(?:HP|KP)\s*[0-9O]{1,3}\b/gi, " ")
+      .replace(/\b[0-9O]{2,3}\s*(?:HP|KP)\b/gi, " ")
+      .replace(/\b(?:MEG|SVP|SWSH|SM|XY|BW)\s*(?:DE|EN)?\b/gi, " ")
+      .replace(/[0-9/\\()[\]{}<>©®™_*+=:;,.!?]/g, " ")
+      .replace(/[^A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\- ]/g, " ")
+      .replace(/^(?:[A-Za-zÄÖÜäöüß]\s+)+/, "")
+      .replace(/(?:\s+[A-Za-zÄÖÜäöüß])+$/, "")
+      .replace(/\s+/g, " ")
+      .trim())
+    .filter(line => line.length >= 3 && line.length <= 34)
+    .filter(line => {
+      const words = normalizeText(line).split(" ").filter(Boolean);
+      if (!words.length || words.length > 5) return false;
+      const usefulWords = words.filter(word => word.length >= 3 && !stopWords.has(word));
+      return usefulWords.length >= 1;
+    })
+    .map(line => ({ line, score: scoreNameHint(line) }))
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.line)
+    .filter((line, index, array) => array.findIndex(other => normalizeText(other) === normalizeText(line)) === index);
+
+  return candidates.slice(0, 6);
+}
+
+function scoreNameHint(line) {
+  const words = line.split(/\s+/).filter(Boolean);
+  let score = 40;
+  if (words.length === 1) score += 35;
+  if (words.length === 2) score += 22;
+  if (words.length > 3) score -= 12 * (words.length - 3);
+  if (/^[A-ZÄÖÜ][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\-]+(?:\s+[A-ZÄÖÜ0-9][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ0-9'\-]+)*$/.test(line)) score += 16;
+  score += Math.min(20, line.replace(/[^A-Za-zÄÖÜäöüß]/g, "").length);
+  return score;
+}
+
+function extractCollectorNumbers(text) {
+  const scoredNumbers = new Map();
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.toUpperCase().replace(/[|\\]/g, "/").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const addNumber = (value, score) => {
+    const normalized = normalizeCollectorNumber(value);
+    if (!normalized) return;
+    const current = scoredNumbers.get(normalized) || 0;
+    if (score > current) scoredNumbers.set(normalized, score);
+  };
+
+  for (const line of lines) {
+    const slashPattern = /(?:^|\s)([0-9O]{1,3})\s*[\/IL]\s*([0-9O]{2,3})(?=\s|$|[^0-9A-Z])/g;
+    for (const match of line.matchAll(slashPattern)) {
+      const numerator = match[1].replace(/O/g, "0");
+      const denominator = match[2].replace(/O/g, "0");
+      const numeratorValue = Number(numerator);
+      const denominatorValue = Number(denominator);
+      if (Number.isFinite(numeratorValue) && Number.isFinite(denominatorValue)
+        && denominatorValue >= 10 && numeratorValue <= denominatorValue) {
+        addNumber(numerator, 100);
+      }
+    }
+  }
+
+  const promoPattern = /\b(?:SVP|SWSH|SM|XY|BW)\s*(?:EN|DE)?\s*[- ]?\s*([0-9O]{1,3})\b/g;
+  const setLinePattern = /\b[A-Z]{2,5}\s+(?:DE|EN|FR|IT|ES|PT)\s+([0-9O]{2,3})\b/g;
+  for (const line of lines) {
+    for (const match of line.matchAll(promoPattern)) addNumber(match[1].replace(/O/g, "0"), 90);
+    for (const match of line.matchAll(setLinePattern)) addNumber(match[1].replace(/O/g, "0"), 80);
+  }
+
+  // Bei weiß umrandeten Kartennummern liest OCR den Schrägstrich gelegentlich
+  // als 1 oder 7 und hängt Ziffern zusammen, z. B. "0307132". Wir prüfen
+  // deshalb nur plausible 2-/3-stellige Nummern mit einem 2-/3-stelligen Settotal.
+  for (const line of lines) {
+    const digitGroups = line.replace(/O/g, "0").match(/\d{6,12}/g) || [];
+    for (const group of digitGroups) {
+      for (let start = 0; start < group.length; start += 1) {
+        for (const numeratorLength of [3, 2]) {
+          for (const separatorLength of [1, 0, 2]) {
+            for (const denominatorLength of [3, 2]) {
+              const end = start + numeratorLength + separatorLength + denominatorLength;
+              if (end > group.length) continue;
+              const numerator = group.slice(start, start + numeratorLength);
+              const separator = group.slice(start + numeratorLength, start + numeratorLength + separatorLength);
+              const denominator = group.slice(start + numeratorLength + separatorLength, end);
+              if (separatorLength && !/^[17]+$/.test(separator)) continue;
+
+              const numeratorValue = Number(numerator);
+              const denominatorValue = Number(denominator);
+              if (numeratorValue < 1 || denominatorValue < 20 || denominatorValue > 300 || numeratorValue > denominatorValue) continue;
+
+              let score = 45;
+              if (numerator.startsWith("0")) score += 18;
+              if (separatorLength === 1) score += 10;
+              if (denominatorLength === 3) score += 5;
+              addNumber(numerator, score);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return [...scoredNumbers.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([number]) => number)
+    .slice(0, 4);
+}
+
+function cleanOcrLine(line) {
+  return String(line || "")
+    .replace(/[|©®™]/g, " ")
+    .replace(/[“”„]/g, '"')
+    .replace(/[’`]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatDebugText(ocrSections, parsed) {
+  const recognizedName = parsed.nameHints[0] || "nicht sicher erkannt";
+  const recognizedNumber = parsed.numbers[0] || "nicht sicher erkannt";
+  const blocks = [
+    `CardScan CM v${APP_VERSION}`,
+    `Ermittelter Kartenname: ${recognizedName}`,
+    `Ermittelte Kartennummer: ${recognizedNumber}`,
+    "",
+    "--- Namensbereich ---",
+    ocrSections.titleText.trim() || "Kein Text erkannt.",
+    "",
+    "--- Nummernbereich ---",
+    ocrSections.numberText.trim() || "Kein Text erkannt."
+  ];
+
+  if (ocrSections.fallbackText.trim()) {
+    blocks.push("", "--- Zusätzlicher Bereich ---", ocrSections.fallbackText.trim());
+  }
+  return blocks.join("\n");
+}
+
 async function findCandidates(parsed, language) {
   const candidateMap = new Map();
   const tasks = [];
 
   for (const number of parsed.numbers.slice(0, 3)) {
     for (const variant of numberVariants(number)) {
-      tasks.push(fetchCards(language, { localId: `eq:${variant}` }, 180));
+      tasks.push(fetchCards(language, { localId: `eq:${variant}` }, 220));
     }
   }
 
   for (const hint of parsed.nameHints.slice(0, 4)) {
-    const cleanHint = hint.replace(/\b(?:ex|gx|v|vmax|vstar)\b/gi, "").trim();
-    if (cleanHint.length >= 3) tasks.push(fetchCards(language, { name: cleanHint }, 90));
+    for (const variant of nameSearchVariants(hint)) {
+      tasks.push(fetchCards(language, { name: variant }, 100));
+    }
   }
 
   if (!tasks.length) return [];
@@ -285,6 +602,19 @@ async function findCandidates(parsed, language) {
     for (const card of response.value) candidateMap.set(card.id, card);
   }
   return [...candidateMap.values()];
+}
+
+function nameSearchVariants(name) {
+  const clean = String(name || "").trim();
+  if (clean.length < 3) return [];
+  const variants = new Set([clean]);
+  if (clean.length >= 7) {
+    variants.add(clean.slice(0, -1));
+    variants.add(clean.slice(1));
+  }
+  const longestWord = clean.split(/\s+/).sort((a, b) => b.length - a.length)[0];
+  if (longestWord?.length >= 4) variants.add(longestWord);
+  return [...variants].filter(value => value.length >= 3).slice(0, 4);
 }
 
 async function fetchCards(language, filters, limit = 100) {
@@ -301,7 +631,7 @@ async function rankAndEnrichCandidates(candidates, parsed, language) {
   const prelim = candidates
     .map(card => ({ ...card, _score: scoreCard(card, parsed) }))
     .sort((a, b) => b._score - a._score)
-    .slice(0, 16);
+    .slice(0, 18);
 
   const enriched = await Promise.all(prelim.map(async card => {
     try {
@@ -324,14 +654,13 @@ function scoreCard(card, parsed) {
   const ocr = parsed.normalizedText;
   let score = 0;
 
-  if (cardName && ocr.includes(cardName)) score += 120;
-  if (card.localId && parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) score += 90;
+  if (cardName && ocr.includes(cardName)) score += 140;
+  if (card.localId && parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) score += 100;
 
   const hints = parsed.nameHints.map(normalizeText);
   for (const hint of hints) {
-    score = Math.max(score, Math.round(similarity(cardName, hint) * 85));
-    const overlap = tokenOverlap(cardName, hint);
-    score += Math.round(overlap * 35);
+    score = Math.max(score, Math.round(similarity(cardName, hint) * 100));
+    score += Math.round(tokenOverlap(cardName, hint) * 40);
   }
 
   const setName = normalizeText(card.set?.name || "");
@@ -345,14 +674,29 @@ function renderResults(cards, parsed) {
   els.results.innerHTML = "";
 
   if (!cards.length) {
+    const recognized = [
+      parsed.nameHints[0] ? `Name „${parsed.nameHints[0]}“` : "",
+      parsed.numbers[0] ? `Nummer ${parsed.numbers[0]}` : ""
+    ].filter(Boolean).join(" und ");
+
     els.resultMessage.className = "notice error";
-    els.resultMessage.textContent = "Keine passende Karte gefunden. Trage den Namen und möglichst die Kartennummer in die manuelle Suche ein.";
+    els.resultMessage.textContent = recognized
+      ? `Keine passende Karte zu ${recognized} gefunden. Prüfe die erkannten Angaben oder nutze die manuelle Suche.`
+      : "Keine passende Karte gefunden. Trage den Namen und möglichst die Kartennummer in die manuelle Suche ein.";
     els.resultMessage.classList.remove("hidden");
     els.resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
 
-  if (!parsed.numbers.length) {
+  const recognizedParts = [];
+  if (parsed.nameHints[0]) recognizedParts.push(parsed.nameHints[0]);
+  if (parsed.numbers[0]) recognizedParts.push(`Nr. ${parsed.numbers[0]}`);
+
+  if (recognizedParts.length) {
+    els.resultMessage.className = "notice";
+    els.resultMessage.textContent = `Erkannt: ${recognizedParts.join(" · ")}. Bitte vergleiche zur Sicherheit Kartenbild und Set.`;
+    els.resultMessage.classList.remove("hidden");
+  } else if (!parsed.numbers.length) {
     els.resultMessage.className = "notice";
     els.resultMessage.textContent = "Die Kartennummer wurde nicht sicher gelesen. Vergleiche deshalb besonders das Kartenbild und das Set.";
     els.resultMessage.classList.remove("hidden");
@@ -447,6 +791,7 @@ function normalizeText(value) {
 function normalizeCollectorNumber(value) {
   const cleaned = String(value || "")
     .toUpperCase()
+    .replace(/O/g, "0")
     .replace(/\s+/g, "")
     .replace(/[^A-Z0-9]/g, "");
   const match = cleaned.match(/([A-Z]*)(\d{1,3})$/);
