@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.0";
+const APP_VERSION = "6.1";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
@@ -59,6 +59,7 @@ let ocrWorker = null;
 let openCvPromise = null;
 let ocrProgressStage = { title: "Texterkennung läuft …", start: 10, end: 70 };
 let lastParsed = null;
+let lastAiDiagnostic = { status: "Noch nicht ausgeführt", detail: "" };
 
 loadAiSettings();
 
@@ -273,7 +274,7 @@ function loadAiSettings() {
   updateAiStatus();
 }
 
-function saveAiSettings() {
+async function saveAiSettings() {
   const endpoint = String(els.aiEndpoint?.value || "").trim().replace(/\/+$/, "");
   const secret = String(els.aiSecret?.value || "").trim();
   if (endpoint && !/^https:\/\//i.test(endpoint)) {
@@ -283,7 +284,31 @@ function saveAiSettings() {
   }
   localStorage.setItem(AI_ENDPOINT_KEY, endpoint);
   localStorage.setItem(AI_SECRET_KEY, secret);
-  updateAiStatus();
+
+  if (!endpoint) {
+    updateAiStatus();
+    return;
+  }
+
+  els.aiStatus.textContent = "KI-Verbindung wird geprüft …";
+  els.aiStatus.className = "ai-status muted";
+
+  try {
+    const response = await fetch(`${endpoint}/health`, { cache: "no-store" });
+    const text = await response.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { /* Text bleibt für Diagnose erhalten. */ }
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(`Status ${response.status}: ${text.slice(0, 220) || "keine Antwort"}`);
+    }
+
+    els.aiStatus.textContent = `KI-Verbindung hergestellt · CardDex AI ${data.version || ""}`.trim();
+    els.aiStatus.className = "ai-status success";
+  } catch (error) {
+    els.aiStatus.textContent = `Worker nicht erreichbar: ${String(error?.message || error)}`;
+    els.aiStatus.className = "ai-status error";
+  }
 }
 
 function updateAiStatus() {
@@ -303,26 +328,64 @@ async function identifyCardWithAi(canvas) {
   const endpoint = getAiEndpoint();
   if (!endpoint) return null;
 
-  const uploadCanvas = createCanvas(720, 1008);
-  const ctx = uploadCanvas.getContext("2d");
+  // Für die KI immer den ursprünglich aufrechten Kartenausschnitt verwenden.
+  // Die lokale OCR darf später unabhängig davon 0°/180° testen.
+  const uploadCanvas = createCanvas(750, 1050);
+  const ctx = uploadCanvas.getContext("2d", { alpha: false });
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, uploadCanvas.width, uploadCanvas.height);
   ctx.drawImage(canvas, 0, 0, uploadCanvas.width, uploadCanvas.height);
-  const image = uploadCanvas.toDataURL("image/jpeg", 0.84);
+  const image = uploadCanvas.toDataURL("image/jpeg", 0.9);
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  lastAiDiagnostic = { status: "Anfrage läuft", detail: "" };
+
   try {
     const headers = { "content-type": "application/json" };
     const secret = String(localStorage.getItem(AI_SECRET_KEY) || "").trim();
     if (secret) headers["x-scanner-key"] = secret;
+
     const response = await fetch(`${endpoint}/identify`, {
       method: "POST",
       headers,
       body: JSON.stringify({ image, language: els.language.value }),
-      signal: controller.signal
+      signal: controller.signal,
+      cache: "no-store"
     });
-    if (!response.ok) throw new Error(`KI-Dienst antwortet mit ${response.status}`);
-    const result = await response.json();
-    if (!result || typeof result !== "object") throw new Error("Ungültige KI-Antwort");
+
+    const responseText = await response.text();
+    let result = null;
+    try { result = JSON.parse(responseText); } catch { /* Rohtext wird unten ausgegeben. */ }
+
+    if (!response.ok) {
+      const detail = result?.detail || result?.error || responseText || "keine Serverantwort";
+      lastAiDiagnostic = { status: `Fehler ${response.status}`, detail: String(detail).slice(0, 700) };
+      throw new Error(`KI-Dienst ${response.status}: ${detail}`);
+    }
+
+    if (!result || typeof result !== "object") {
+      lastAiDiagnostic = { status: "Ungültige Antwort", detail: responseText.slice(0, 700) };
+      throw new Error("Ungültige KI-Antwort");
+    }
+
+    if (result.error) {
+      lastAiDiagnostic = { status: "KI-Fehler", detail: String(result.error).slice(0, 700) };
+      throw new Error(String(result.error));
+    }
+
+    lastAiDiagnostic = {
+      status: "Erfolgreich",
+      detail: `Name: ${result.name || "–"} · Nummer: ${result.number || "–"}${result.denominator ? `/${result.denominator}` : ""}`
+    };
     return result;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      lastAiDiagnostic = { status: "Zeitüberschreitung", detail: "Der Worker hat innerhalb von 45 Sekunden nicht geantwortet." };
+    } else if (lastAiDiagnostic.status === "Anfrage läuft") {
+      lastAiDiagnostic = { status: "Verbindungsfehler", detail: String(error?.message || error).slice(0, 700) };
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -385,7 +448,22 @@ async function analyzePreparedCard() {
   clearResults();
 
   try {
-    setProgress("Texterkennung wird geladen …", 8);
+    setProgress("Erkennung wird vorbereitet …", 8);
+
+    // KI und lokale OCR parallel starten. Wichtig: Die KI erhält den ersten,
+    // ursprünglich aufrechten Kartenausschnitt und nicht die von OCR gewählte
+    // 180°-Variante.
+    lastAiDiagnostic = getAiEndpoint()
+      ? { status: "Anfrage vorbereitet", detail: "" }
+      : { status: "Nicht verbunden", detail: "" };
+    const aiPromise = getAiEndpoint()
+      ? identifyCardWithAi(preparedCanvases[0]).catch(error => {
+          console.warn("KI-Erkennung nicht verfügbar, lokale Erkennung läuft weiter:", error);
+          return null;
+        })
+      : Promise.resolve(null);
+
+    setProgress("Texterkennung wird geladen …", 10);
     const language = els.language.value === "de" ? "deu+eng" : "eng";
     const worker = await getOcrWorker(language);
 
@@ -398,13 +476,9 @@ async function analyzePreparedCard() {
 
     let aiResult = null;
     if (getAiEndpoint()) {
-      setProgress("KI-Bilderkennung prüft die Karte …", 67);
-      try {
-        aiResult = await identifyCardWithAi(selected.canvas);
-        parsed = mergeAiResultIntoParsed(parsed, aiResult);
-      } catch (error) {
-        console.warn("KI-Erkennung nicht verfügbar, lokale Erkennung läuft weiter:", error);
-      }
+      setProgress("KI-Bilderkennung wird ausgewertet …", 67);
+      aiResult = await aiPromise;
+      parsed = mergeAiResultIntoParsed(parsed, aiResult);
     }
     lastParsed = parsed;
 
@@ -1457,7 +1531,9 @@ function formatDebugText(ocr, parsed, selected, aiResult = null) {
   const identifier = parsed.identifiers[0] ? formatIdentifierForInput(parsed.identifiers[0]) : "nicht sicher erkannt";
   const blocks = [
     `CardScan CM v${APP_VERSION}`,
-    `KI-Modus: ${getAiEndpoint() ? "aktiv" : "nicht verbunden"}`,
+    `KI-Modus: ${getAiEndpoint() ? "verbunden" : "nicht verbunden"}`,
+    `KI-Status: ${lastAiDiagnostic.status}`,
+    `KI-Details: ${lastAiDiagnostic.detail || "keine"}`,
     `KI-Antwort: ${aiResult ? JSON.stringify(aiResult) : "keine"}`,
     `Verwendeter Bildausschnitt: ${selected.canvasIndex + 1}`,
     `Ausrichtung: ${selected.rotation}°`,

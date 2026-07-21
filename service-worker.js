@@ -1,4 +1,4 @@
-const CACHE_NAME = "cardscan-cm-v6-0";
+const CACHE_NAME = "cardscan-cm-v6-1";
 const APP_SHELL = [
   "./",
   "./index.html",
