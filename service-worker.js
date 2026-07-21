@@ -1,4 +1,4 @@
-const CACHE_NAME = "cardscan-cm-v6-1";
+const CACHE_NAME = "cardscan-cm-v6-2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -13,26 +13,38 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      )
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
+
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // GitHub Pages wird online immer zuerst abgefragt. So landen Updates sofort
-  // auf dem iPhone; der Cache dient nur als Ausweichlösung ohne Verbindung.
+  /*
+   * Online immer wirklich die aktuelle GitHub-Datei abrufen. `no-store`
+   * umgeht zusätzlich den normalen Browser-HTTP-Cache, damit app.js-Updates
+   * auf dem iPhone nicht mehr an einer alten Version hängen bleiben.
+   */
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-store" })
       .then(response => {
         if (response.ok) {
           const copy = response.clone();

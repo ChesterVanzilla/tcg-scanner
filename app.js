@@ -3,13 +3,15 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.1";
+const APP_VERSION = "6.2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
 const CARD_HEIGHT = 1050;
 const MAX_RESULTS = 8;
-const MAX_IMAGE_CANDIDATES = 72;
+const MAX_IMAGE_CANDIDATES = 24;
+const MAX_PREPARED_CANVASES = 2;
+const GALLERY_MAX_DIMENSION = 1280;
 
 const els = {
   openScannerButton: document.querySelector("#openScannerButton"),
@@ -60,6 +62,8 @@ let openCvPromise = null;
 let ocrProgressStage = { title: "Texterkennung läuft …", start: 10, end: 70 };
 let lastParsed = null;
 let lastAiDiagnostic = { status: "Noch nicht ausgeführt", detail: "" };
+let imagePreparationToken = 0;
+let isAnalyzing = false;
 
 loadAiSettings();
 
@@ -73,7 +77,11 @@ els.manualSearchButton.addEventListener("click", manualSearch);
 els.language.addEventListener("change", clearResults);
 els.saveAiSettingsButton?.addEventListener("click", saveAiSettings);
 window.addEventListener("resize", updateScannerShades);
-window.addEventListener("pagehide", stopCameraStream);
+window.addEventListener("pagehide", () => {
+  stopCameraStream();
+  terminateOcrWorker();
+  releasePreparedCanvases();
+});
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && !els.scannerModal.classList.contains("hidden")) closeLiveScanner();
@@ -162,7 +170,7 @@ async function captureLiveCard() {
 
   try {
     const canvas = captureGuideFromVideo(els.cameraVideo, els.cameraViewport, els.scannerGuide);
-    setPreparedCanvases([canvas], "Live-Scanner", "exakt zugeschnitten");
+    await setPreparedCanvases([canvas], "Live-Scanner", "exakt zugeschnitten");
     closeLiveScanner();
     els.previewWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (error) {
@@ -207,63 +215,185 @@ function captureGuideFromVideo(video, viewportElement, guideElement) {
 
 async function handleImageSelection(event) {
   const file = event.target.files?.[0];
-  if (!file) return;
+  if (!file || isAnalyzing) return;
 
+  const token = ++imagePreparationToken;
   setBusy(true);
   clearResults();
+
   try {
-    setProgress("Bild wird geladen …", 5);
-    const image = await loadImageFromFile(file);
-    const source = drawImageToLimitedCanvas(image, 1900);
-    setProgress("Kartenbereich wird gesucht …", 12);
-    const prepared = await prepareGalleryCanvases(source);
-    setPreparedCanvases(prepared.canvases, "Bildauswahl", prepared.status);
+    setProgress("Vorheriges Bild wird freigegeben …", 3);
+    await terminateOcrWorker();
+    releasePreparedCanvases();
+
+    setProgress("Bild wird speicherschonend geladen …", 8);
+    const source = await loadFileToLimitedCanvas(file, GALLERY_MAX_DIMENSION, 15000);
+
+    if (token !== imagePreparationToken) {
+      releaseCanvas(source);
+      return;
+    }
+
+    setProgress("Kartenbereich wird vorbereitet …", 35);
+    const prepared = prepareGalleryCanvases(source);
+    releaseCanvas(source);
+
+    if (token !== imagePreparationToken) {
+      prepared.canvases.forEach(releaseCanvas);
+      return;
+    }
+
+    await setPreparedCanvases(prepared.canvases, "Bildauswahl", prepared.status);
+    setProgress("Bild ist bereit", 100);
     els.previewWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (error) {
     console.error(error);
-    showError("Das Bild konnte nicht vorbereitet werden. Bitte nimm ein neues Foto auf.");
+    showError("Das Bild konnte nicht vorbereitet werden. Bitte versuche es erneut oder nutze den Live-Scanner.");
   } finally {
-    setBusy(false);
     event.target.value = "";
+    if (token === imagePreparationToken) setBusy(false);
   }
 }
 
-async function prepareGalleryCanvases(sourceCanvas) {
-  // Auf iPhones kann das große OpenCV-WebAssembly-Paket beim ersten Laden sehr
-  // lange initialisieren oder vom Browser angehalten werden. Deshalb darf es die
-  // Bildauswahl nicht mehr blockieren. Wir erzeugen sofort robuste Standard-
-  // ausschnitte und versuchen die automatische Kartenranderkennung nur kurz als
-  // optionale Verbesserung.
-  const fallbackCanvases = [];
-  for (const [scale, verticalBias] of [[0.86, -0.030], [0.70, -0.030], [0.78, -0.065], [0.80, -0.040], [0.94, 0]]) {
-    fallbackCanvases.push(centerCardCrop(sourceCanvas, scale, verticalBias));
-  }
+function prepareGalleryCanvases(sourceCanvas) {
+  /*
+   * Galerie-Fotos werden bewusst ohne OpenCV vorbereitet. Das große
+   * WebAssembly-Paket war auf iPhones die häufigste Ursache für Hänger direkt
+   * nach der Bildauswahl. Zwei leichte Ausschnitte reichen für die KI und die
+   * lokale Rückfallerkennung aus und halten den Speicherverbrauch deutlich
+   * niedriger.
+   */
+  const canvases = [
+    centerCardCrop(sourceCanvas, 0.90, -0.025),
+    centerCardCrop(sourceCanvas, 0.72, -0.025)
+  ];
 
-  let detected = null;
-  try {
-    const cv = await loadOpenCv(2200);
-    detected = detectAndRectifyCard(sourceCanvas, cv);
-  } catch (error) {
-    console.warn("Optionale OpenCV-Kartenerkennung übersprungen:", error);
-  }
-
-  const canvases = detected ? [detected, ...fallbackCanvases] : fallbackCanvases;
   return {
-    canvases: deduplicateCanvasShapes(canvases),
-    status: detected ? "Kartenrand automatisch erkannt" : "schnelle Bildausschnitte vorbereitet"
+    canvases,
+    status: "speicherschonend vorbereitet · KI zuerst"
   };
 }
 
-function setPreparedCanvases(canvases, label, status) {
-  preparedCanvases = canvases.filter(Boolean);
+async function setPreparedCanvases(canvases, label, status) {
+  releasePreparedCanvases();
+  preparedCanvases = canvases.filter(Boolean).slice(0, MAX_PREPARED_CANVASES);
   if (!preparedCanvases.length) throw new Error("Kein Kartenausschnitt verfügbar.");
 
   const displayCanvas = preparedCanvases[0];
   copyCanvas(displayCanvas, els.cardCanvas);
-  els.previewImage.src = displayCanvas.toDataURL("image/jpeg", 0.92);
+  await updatePreviewFromCanvas(displayCanvas);
   els.previewLabel.textContent = label === "Live-Scanner" ? "Aufgenommener Kartenausschnitt" : "Vorbereiteter Kartenausschnitt";
   els.cropStatus.textContent = status;
   els.previewWrap.classList.remove("hidden");
+}
+
+
+async function updatePreviewFromCanvas(canvas) {
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.82);
+  previewObjectUrl = URL.createObjectURL(blob);
+  els.previewImage.src = previewObjectUrl;
+}
+
+function canvasToBlob(canvas, type = "image/jpeg", quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(new Error("Vorschaubild konnte nicht erzeugt werden."));
+    }, type, quality);
+  });
+}
+
+function releaseCanvas(canvas) {
+  if (!canvas || canvas === els.cardCanvas || canvas === els.sourceCanvas) return;
+  try {
+    canvas.width = 1;
+    canvas.height = 1;
+  } catch {
+    // Bereits freigegebene Canvas-Flächen ignorieren.
+  }
+}
+
+function releasePreparedCanvases() {
+  for (const canvas of preparedCanvases) releaseCanvas(canvas);
+  preparedCanvases = [];
+
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+
+  if (els.previewImage) {
+    els.previewImage.removeAttribute("src");
+  }
+}
+
+function compactPreparedCanvases() {
+  if (preparedCanvases.length <= 1) return;
+  const first = preparedCanvases[0];
+  preparedCanvases.slice(1).forEach(releaseCanvas);
+  preparedCanvases = first ? [first] : [];
+}
+
+async function terminateOcrWorker() {
+  const worker = ocrWorker?.worker;
+  ocrWorker = null;
+  if (!worker) return;
+  try {
+    await worker.terminate();
+  } catch {
+    // Ein bereits von iOS beendeter Worker muss nicht erneut beendet werden.
+  }
+}
+
+function loadFileToLimitedCanvas(file, maxDimension, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    let settled = false;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      image.onload = null;
+      image.onerror = null;
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try { image.src = ""; } catch { /* ignorieren */ }
+      reject(new Error("Das Bildladen dauerte zu lange und wurde abgebrochen."));
+    }, timeoutMs);
+
+    image.onload = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        const canvas = drawImageToLimitedCanvas(image, maxDimension);
+        cleanup();
+        try { image.src = ""; } catch { /* ignorieren */ }
+        resolve(canvas);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+
+    image.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Bild konnte nicht geladen werden."));
+    };
+
+    image.src = url;
+  });
 }
 
 
@@ -328,14 +458,22 @@ async function identifyCardWithAi(canvas) {
   const endpoint = getAiEndpoint();
   if (!endpoint) return null;
 
-  // Für die KI immer den ursprünglich aufrechten Kartenausschnitt verwenden.
-  // Die lokale OCR darf später unabhängig davon 0°/180° testen.
-  const uploadCanvas = createCanvas(750, 1050);
+  /*
+   * Für die KI reicht eine kleinere Arbeitsauflösung. Das reduziert die
+   * Base64-Zeichenfolge, den Safari-Speicherbedarf und die KI-Rechenzeit.
+   */
+  const uploadCanvas = createCanvas(600, 840);
   const ctx = uploadCanvas.getContext("2d", { alpha: false });
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, uploadCanvas.width, uploadCanvas.height);
   ctx.drawImage(canvas, 0, 0, uploadCanvas.width, uploadCanvas.height);
-  const image = uploadCanvas.toDataURL("image/jpeg", 0.9);
+
+  let image = "";
+  try {
+    image = uploadCanvas.toDataURL("image/jpeg", 0.78);
+  } finally {
+    releaseCanvas(uploadCanvas);
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
@@ -354,6 +492,7 @@ async function identifyCardWithAi(canvas) {
       cache: "no-store"
     });
 
+    image = "";
     const responseText = await response.text();
     let result = null;
     try { result = JSON.parse(responseText); } catch { /* Rohtext wird unten ausgegeben. */ }
@@ -387,6 +526,7 @@ async function identifyCardWithAi(canvas) {
     }
     throw error;
   } finally {
+    image = "";
     clearTimeout(timeout);
   }
 }
@@ -443,65 +583,213 @@ function dedupeBy(items, keyFn) {
 }
 
 async function analyzePreparedCard() {
-  if (!preparedCanvases.length) return;
+  if (!preparedCanvases.length || isAnalyzing) return;
+
+  isAnalyzing = true;
   setBusy(true);
   clearResults();
 
-  try {
-    setProgress("Erkennung wird vorbereitet …", 8);
+  let selected = {
+    canvas: preparedCanvases[0],
+    canvasIndex: 0,
+    rotation: 0,
+    quality: 0,
+    alternatives: [preparedCanvases[0]]
+  };
+  let ocr = { observations: [] };
+  let aiResult = null;
+  let parsed = createEmptyParsed();
+  let usedLocalOcr = false;
 
-    // KI und lokale OCR parallel starten. Wichtig: Die KI erhält den ersten,
-    // ursprünglich aufrechten Kartenausschnitt und nicht die von OCR gewählte
-    // 180°-Variante.
+  try {
     lastAiDiagnostic = getAiEndpoint()
       ? { status: "Anfrage vorbereitet", detail: "" }
       : { status: "Nicht verbunden", detail: "" };
-    const aiPromise = getAiEndpoint()
-      ? identifyCardWithAi(preparedCanvases[0]).catch(error => {
-          console.warn("KI-Erkennung nicht verfügbar, lokale Erkennung läuft weiter:", error);
-          return null;
-        })
-      : Promise.resolve(null);
 
-    setProgress("Texterkennung wird geladen …", 10);
-    const language = els.language.value === "de" ? "deu+eng" : "eng";
-    const worker = await getOcrWorker(language);
-
-    const selected = await chooseBestCanvasAndOrientation(worker, preparedCanvases);
-    copyCanvas(selected.canvas, els.cardCanvas);
-    els.previewImage.src = selected.canvas.toDataURL("image/jpeg", 0.92);
-
-    const ocr = await recognizeDetailedCard(worker, selected.canvas, selected.quick);
-    let parsed = parseOcrObservations(ocr.observations);
-
-    let aiResult = null;
+    /*
+     * Der wichtigste Unterschied zu Version 6.1: Die KI läuft zuerst und
+     * allein. Tesseract und seine großen Zwischenbilder werden nur noch
+     * geladen, wenn die KI ausfällt, unvollständig antwortet oder die
+     * Datenbanksuche keinen brauchbaren Kandidaten findet.
+     */
     if (getAiEndpoint()) {
-      setProgress("KI-Bilderkennung wird ausgewertet …", 67);
-      aiResult = await aiPromise;
-      parsed = mergeAiResultIntoParsed(parsed, aiResult);
+      setProgress("KI analysiert die Karte …", 12);
+      try {
+        aiResult = await identifyCardWithAi(preparedCanvases[0]);
+        parsed = mergeAiResultIntoParsed(parsed, aiResult);
+      } catch (error) {
+        console.warn("KI-Erkennung nicht verfügbar, lokale Rückfallerkennung wird gestartet:", error);
+      }
     }
-    lastParsed = parsed;
 
+    let candidates = [];
+    if (hasUsefulRecognition(parsed)) {
+      setProgress("Kartendatenbank wird durchsucht …", 48);
+      candidates = await findCandidates(parsed, els.language.value);
+    }
+
+    const needsOcr = !hasStrongAiRecognition(aiResult) || candidates.length === 0;
+    if (needsOcr) {
+      usedLocalOcr = true;
+      setProgress("Lokale Rückfallerkennung wird geladen …", 52);
+      const fallback = await runLightLocalRecognition(preparedCanvases);
+      selected = fallback.selected;
+      ocr = fallback.ocr;
+      parsed = mergeParsedResults(parsed, fallback.parsed);
+      if (aiResult) parsed = mergeAiResultIntoParsed(parsed, aiResult);
+
+      setProgress("Kartendatenbank wird erneut durchsucht …", 72);
+      candidates = await findCandidates(parsed, els.language.value);
+    }
+
+    lastParsed = parsed;
     els.manualName.value = parsed.nameHints[0]?.value || "";
     els.manualNumber.value = formatIdentifierForInput(parsed.identifiers[0]);
-    els.ocrText.textContent = formatDebugText(ocr, parsed, selected, aiResult);
+    els.ocrText.textContent = formatDebugText(ocr, parsed, selected, aiResult)
+      + `
+
+Lokale OCR ausgeführt: ${usedLocalOcr ? "ja" : "nein – KI-Ergebnis war ausreichend"}`;
     els.debugPanel.classList.remove("hidden");
 
-    setProgress("Kartendatenbank wird durchsucht …", 70);
-    const candidates = await findCandidates(parsed, els.language.value);
-    setProgress("Kartenbilder werden verglichen …", 79);
-    const ranked = await rankCandidates(candidates, parsed, els.language.value, selected.alternatives || [selected.canvas]);
-    setProgress("Preise und Kartendaten werden geladen …", 94);
+    setProgress("Treffer werden sortiert …", 82);
+    const rankingCanvases = hasStrongAiRecognition(aiResult)
+      ? null
+      : (selected.alternatives?.slice(0, 1) || [selected.canvas]);
+    const ranked = await rankCandidates(
+      candidates,
+      parsed,
+      els.language.value,
+      rankingCanvases
+    );
+
+    setProgress("Kartendaten werden geladen …", 94);
     const enriched = await enrichTopCandidates(ranked, els.language.value);
 
     renderResults(enriched, parsed);
     setProgress("Fertig", 100);
   } catch (error) {
     console.error(error);
-    showError("Die automatische Erkennung konnte nicht abgeschlossen werden. Prüfe die Internetverbindung oder nutze die manuelle Suche.");
+    showError("Die Erkennung konnte nicht abgeschlossen werden. Bitte prüfe die Internetverbindung oder nutze die manuelle Suche.");
   } finally {
-    setTimeout(() => setBusy(false), 250);
+    await terminateOcrWorker();
+    if (selected?.canvas && !preparedCanvases.includes(selected.canvas)) releaseCanvas(selected.canvas);
+    compactPreparedCanvases();
+    isAnalyzing = false;
+    setTimeout(() => setBusy(false), 120);
   }
+}
+
+function createEmptyParsed() {
+  return {
+    rawText: "",
+    normalizedText: "",
+    nameHints: [],
+    mechanics: [],
+    identifiers: [],
+    numbers: [],
+    denominators: [],
+    setCodes: []
+  };
+}
+
+function hasUsefulRecognition(parsed) {
+  return Boolean(parsed?.nameHints?.length || parsed?.identifiers?.length);
+}
+
+function hasStrongAiRecognition(ai) {
+  if (!ai || typeof ai !== "object") return false;
+  const name = String(ai.name || "").trim();
+  const number = normalizeCollectorNumber(ai.number || "");
+  const confidence = Number(ai.confidence || 0);
+  return Boolean(name && number && (confidence >= 0.35 || confidence === 0));
+}
+
+function mergeParsedResults(primary, secondary) {
+  const first = primary || createEmptyParsed();
+  const second = secondary || createEmptyParsed();
+  return {
+    ...first,
+    rawText: [first.rawText, second.rawText].filter(Boolean).join("\n\n"),
+    normalizedText: normalizeText([first.normalizedText, second.normalizedText].filter(Boolean).join(" ")),
+    nameHints: dedupeBy([...(first.nameHints || []), ...(second.nameHints || [])], item => normalizeText(item.value)).slice(0, 14),
+    mechanics: unique([...(first.mechanics || []), ...(second.mechanics || [])]),
+    identifiers: dedupeBy([...(first.identifiers || []), ...(second.identifiers || [])], item => `${item.setCode || ""}|${item.number || ""}|${item.denominator || ""}`).slice(0, 14),
+    numbers: unique([...(first.numbers || []), ...(second.numbers || [])].filter(Boolean)),
+    denominators: unique([...(first.denominators || []), ...(second.denominators || [])].filter(Boolean)),
+    setCodes: unique([...(first.setCodes || []), ...(second.setCodes || [])].filter(Boolean))
+  };
+}
+
+async function runLightLocalRecognition(canvases) {
+  const language = els.language.value === "de" ? "deu+eng" : "eng";
+  const worker = await getOcrWorker(language);
+  const selected = await chooseBestCanvasAndOrientationLight(worker, canvases);
+  copyCanvas(selected.canvas, els.cardCanvas);
+  await updatePreviewFromCanvas(selected.canvas);
+  const ocr = await recognizeDetailedCardLight(worker, selected.canvas, selected.quick);
+  const parsed = parseOcrObservations(ocr.observations);
+  return { selected, ocr, parsed };
+}
+
+async function chooseBestCanvasAndOrientationLight(worker, canvases) {
+  const attempts = [];
+  const limited = canvases.slice(0, 2);
+  const jobs = [];
+  if (limited[0]) jobs.push({ canvas: limited[0], canvasIndex: 0, rotation: 0, temporary: false });
+  if (limited[1]) jobs.push({ canvas: limited[1], canvasIndex: 1, rotation: 0, temporary: false });
+  if (limited[0]) jobs.push({ canvas: rotateCanvas(limited[0], 180), canvasIndex: 0, rotation: 180, temporary: true });
+
+  for (let index = 0; index < jobs.length; index += 1) {
+    const job = jobs[index];
+    const start = 54 + (index / Math.max(1, jobs.length)) * 10;
+    const end = 54 + ((index + 1) / Math.max(1, jobs.length)) * 10;
+    const quick = await recognizeQuickCard(worker, job.canvas, start, end);
+    const parsed = parseOcrObservations(quick.observations);
+    const quality = scoreQuickRecognition(parsed, quick.observations);
+    attempts.push({ ...job, quick, parsed, quality });
+  }
+
+  attempts.sort((a, b) => b.quality - a.quality);
+  const best = attempts[0] || {
+    canvas: limited[0],
+    canvasIndex: 0,
+    rotation: 0,
+    quick: { observations: [] },
+    parsed: createEmptyParsed(),
+    quality: 0,
+    temporary: false
+  };
+
+  for (const attempt of attempts) {
+    if (attempt !== best && attempt.temporary) releaseCanvas(attempt.canvas);
+  }
+
+  return {
+    ...best,
+    alternatives: [best.canvas]
+  };
+}
+
+async function recognizeDetailedCardLight(worker, canvas, quick) {
+  const observations = [...(quick?.observations || [])];
+  const jobs = [
+    { label: "Name Kopfzeile", region: { x: 0.025, y: 0.0, width: 0.95, height: 0.18 }, mode: "title", psm: "11", preprocessing: "local-contrast" },
+    { label: "Name Trainer/Full-Art", region: { x: 0.03, y: 0.015, width: 0.94, height: 0.24 }, mode: "title", psm: "11" },
+    { label: "Nummer Fußzeile", region: { x: 0.01, y: 0.855, width: 0.76, height: 0.14 }, mode: "number", psm: "11", preprocessing: "local-contrast" },
+    { label: "Mechanik / Kontext", region: { x: 0.02, y: 0.74, width: 0.96, height: 0.25 }, mode: "mechanic", psm: "11", preprocessing: "local-contrast" }
+  ];
+
+  for (let index = 0; index < jobs.length; index += 1) {
+    const start = 64 + (index / jobs.length) * 8;
+    const end = 64 + ((index + 1) / jobs.length) * 8;
+    observations.push(await recognizeRegion(worker, canvas, {
+      ...jobs[index],
+      progressStart: start,
+      progressEnd: end
+    }));
+  }
+
+  return { observations };
 }
 
 async function chooseBestCanvasAndOrientation(worker, canvases) {
@@ -636,14 +924,18 @@ async function recognizeRegion(worker, canvas, options) {
     user_defined_dpi: "300"
   });
 
-  const result = await worker.recognize(crop);
-  return {
-    label: options.label,
-    mode: options.mode,
-    text: result?.data?.text || "",
-    confidence: Number(result?.data?.confidence || 0),
-    region: options.region
-  };
+  try {
+    const result = await worker.recognize(crop);
+    return {
+      label: options.label,
+      mode: options.mode,
+      text: result?.data?.text || "",
+      confidence: Number(result?.data?.confidence || 0),
+      region: options.region
+    };
+  } finally {
+    releaseCanvas(crop);
+  }
 }
 
 async function getOcrWorker(language) {
@@ -669,7 +961,7 @@ function createProcessedCrop(source, region, mode, preprocessing) {
   const sy = Math.max(0, Math.round(source.height * region.y));
   const sw = Math.max(1, Math.min(source.width - sx, Math.round(source.width * region.width)));
   const sh = Math.max(1, Math.min(source.height - sy, Math.round(source.height * region.height)));
-  const targetWidth = mode === "number" || mode === "mechanic" || mode === "context" ? 1550 : 1400;
+  const targetWidth = mode === "number" || mode === "mechanic" || mode === "context" ? 1050 : 960;
   const targetHeight = Math.max(150, Math.round(sh * targetWidth / sw));
   const canvas = createCanvas(targetWidth, targetHeight);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -732,8 +1024,8 @@ function createProcessedCrop(source, region, mode, preprocessing) {
 
 function applyLocalContrast(gray, width, height, radius = 18, contrastScale = 45) {
   const stride = width + 1;
-  const integral = new Float64Array((width + 1) * (height + 1));
-  const integralSquared = new Float64Array((width + 1) * (height + 1));
+  const integral = new Float32Array((width + 1) * (height + 1));
+  const integralSquared = new Float32Array((width + 1) * (height + 1));
 
   for (let y = 1; y <= height; y += 1) {
     let rowSum = 0;
@@ -1227,15 +1519,19 @@ async function rankCandidates(candidates, parsed, language, scannedCanvases) {
 
   const sourceList = Array.isArray(scannedCanvases) ? scannedCanvases.filter(Boolean) : (scannedCanvases ? [scannedCanvases] : []);
   if (sourceList.length) {
-    const sourceDescriptors = sourceList.slice(0, 3).map(createCardDescriptor);
+    const sourceDescriptors = sourceList.slice(0, 1).map(createCardDescriptor);
     const pool = ranked.slice(0, MAX_IMAGE_CANDIDATES);
-    await mapWithConcurrency(pool, 6, async card => {
+    await mapWithConcurrency(pool, 3, async card => {
       if (!card.image) return;
       try {
         const image = await loadExternalImage(`${card.image}/low.webp`, 8000);
         const candidateCanvas = drawImageToCardCanvas(image);
-        const descriptor = createCardDescriptor(candidateCanvas);
-        card._imageScore = Math.max(...sourceDescriptors.map(source => compareCardDescriptors(source, descriptor)));
+        try {
+          const descriptor = createCardDescriptor(candidateCanvas);
+          card._imageScore = Math.max(...sourceDescriptors.map(source => compareCardDescriptors(source, descriptor)));
+        } finally {
+          releaseCanvas(candidateCanvas);
+        }
       } catch {
         card._imageScore = null;
       }
@@ -1333,29 +1629,34 @@ function createImageVector(canvas, region, columns, rows, mode) {
     columns,
     rows
   );
-  const data = ctx.getImageData(0, 0, columns, rows).data;
-  const values = [];
 
-  if (mode === "color") {
-    for (let i = 0; i < data.length; i += 4) {
-      values.push(data[i] / 255, data[i + 1] / 255, data[i + 2] / 255);
+  try {
+    const data = ctx.getImageData(0, 0, columns, rows).data;
+    const values = [];
+
+    if (mode === "color") {
+      for (let i = 0; i < data.length; i += 4) {
+        values.push(data[i] / 255, data[i + 1] / 255, data[i + 2] / 255);
+      }
+      return values;
     }
-    return values;
-  }
 
-  const gray = [];
-  for (let i = 0; i < data.length; i += 4) gray.push((0.22 * data[i] + 0.70 * data[i + 1] + 0.08 * data[i + 2]) / 255);
-  if (mode === "gray") return normalizeVector(gray);
+    const gray = [];
+    for (let i = 0; i < data.length; i += 4) gray.push((0.22 * data[i] + 0.70 * data[i + 1] + 0.08 * data[i + 2]) / 255);
+    if (mode === "gray") return normalizeVector(gray);
 
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0; x < columns; x += 1) {
-      const here = gray[y * columns + x];
-      const right = gray[y * columns + Math.min(columns - 1, x + 1)];
-      const down = gray[Math.min(rows - 1, y + 1) * columns + x];
-      values.push(Math.min(1, Math.abs(here - right) + Math.abs(here - down)));
+    for (let y = 0; y < rows; y += 1) {
+      for (let x = 0; x < columns; x += 1) {
+        const here = gray[y * columns + x];
+        const right = gray[y * columns + Math.min(columns - 1, x + 1)];
+        const down = gray[Math.min(rows - 1, y + 1) * columns + x];
+        values.push(Math.min(1, Math.abs(here - right) + Math.abs(here - down)));
+      }
     }
+    return normalizeVector(values);
+  } finally {
+    releaseCanvas(mini);
   }
-  return normalizeVector(values);
 }
 
 function compareCardDescriptors(a, b) {
