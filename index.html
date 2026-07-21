@@ -3,33 +3,57 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#10131a" />
+  <meta name="theme-color" content="#e53935" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="CardScan CM" />
-  <meta name="description" content="Pokémon-Karte scannen, erkennen, Preise prüfen und auf Cardmarket öffnen." />
+  <meta name="apple-mobile-web-app-title" content="CardDex AI" />
+  <meta name="description" content="CardDex AI erkennt Pokémon-Karten und öffnet die passende Karte auf Cardmarket." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
-  <link rel="icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=6" />
-  <title>CardScan CM</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css?v=63" />
+  <title>CardDex AI</title>
 </head>
 <body>
+  <div class="background-grid" aria-hidden="true"></div>
+
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand-mark" aria-hidden="true"><span></span></div>
-      <div>
-        <h1>CardScan <em>CM</em></h1>
-        <p>Pokémon-Karte erkennen und auf Cardmarket öffnen</p>
+      <div class="system-line" aria-hidden="true">
+        <span>CARDEX SYSTEM</span>
+        <span class="system-status"><i></i> KI BEREIT</span>
+      </div>
+
+      <div class="brand-row">
+        <img class="brand-device" src="icons/icon-192.png" alt="" />
+        <div class="brand-copy">
+          <p class="eyebrow">PERSONAL CARD ASSISTANT</p>
+          <h1>CardDex <em>AI</em></h1>
+          <p>Scannen. Erkennen. Sammeln.</p>
+        </div>
+      </div>
+
+      <div class="status-console" aria-label="Systemstatus">
+        <span><i class="status-light red"></i> POWER</span>
+        <span><i class="status-light green"></i> AI</span>
+        <span><i class="status-light amber"></i> SYNC</span>
       </div>
     </header>
 
     <main>
-      <section class="panel intro-panel">
-        <div class="step-badge">1</div>
-        <div class="panel-copy">
-          <h2>Karte scannen</h2>
-          <p>Am zuverlässigsten funktioniert der neue Live-Scanner. Richte die Außenkanten der Karte am gelben Rahmen aus und halte das iPhone möglichst parallel zur Karte.</p>
+      <section id="scanner-panel" class="panel intro-panel">
+        <div class="section-heading compact-heading">
+          <div class="step-badge">01</div>
+          <div>
+            <p class="panel-kicker">SCAN-MODUS</p>
+            <h2>Karte scannen</h2>
+          </div>
+        </div>
+
+        <div class="tip-box">
+          <span class="pixel-icon scan-icon" aria-hidden="true"></span>
+          <p>Richte die Karte möglichst gerade aus. Bei glänzenden Karten helfen gleichmäßiges Licht und wenig Reflexionen.</p>
+          <i class="tip-led" aria-hidden="true"></i>
         </div>
 
         <div class="language-row">
@@ -40,21 +64,34 @@
           </select>
         </div>
 
-        <div class="upload-actions">
-          <button id="openScannerButton" class="primary-button" type="button">
-            <span class="button-icon">⌾</span>
-            Live-Scanner öffnen
-          </button>
-          <label class="secondary-button">
-            <input id="galleryInput" type="file" accept="image/*" hidden />
-            <span class="button-icon">▧</span>
-            Bild auswählen
-          </label>
+        <div class="scan-console">
+          <div class="scan-display" aria-hidden="true">
+            <span class="scan-corner top-left"></span>
+            <span class="scan-corner top-right"></span>
+            <span class="scan-corner bottom-left"></span>
+            <span class="scan-corner bottom-right"></span>
+            <div class="card-silhouette">
+              <span></span><span></span><span></span>
+            </div>
+            <p><i></i> SCAN BEREIT</p>
+          </div>
+
+          <div class="upload-actions">
+            <button id="openScannerButton" class="primary-button" type="button">
+              <span class="button-icon camera-symbol" aria-hidden="true"></span>
+              Live-Scanner
+            </button>
+            <label class="secondary-button">
+              <input id="galleryInput" type="file" accept="image/*" hidden />
+              <span class="button-icon gallery-symbol" aria-hidden="true"></span>
+              Bild auswählen
+            </label>
+          </div>
         </div>
 
         <label class="fallback-camera-link">
           <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
-          Kamera-App als Alternative verwenden
+          Kamera-App als Alternative öffnen
         </label>
 
         <div id="previewWrap" class="preview-wrap hidden">
@@ -62,8 +99,14 @@
             <strong id="previewLabel">Vorbereiteter Kartenausschnitt</strong>
             <span id="cropStatus" class="status-chip">bereit</span>
           </div>
-          <img id="previewImage" alt="Vorbereiteter Ausschnitt der Pokémon-Karte" />
-          <p class="preview-help">Prüfe kurz, ob die vollständige Karte zu sehen ist. Ein kleiner Rand außerhalb der Karte ist unproblematisch.</p>
+          <div class="preview-screen">
+            <span class="preview-corner top-left"></span>
+            <span class="preview-corner top-right"></span>
+            <span class="preview-corner bottom-left"></span>
+            <span class="preview-corner bottom-right"></span>
+            <img id="previewImage" alt="Vorbereiteter Ausschnitt der Pokémon-Karte" />
+          </div>
+          <p class="preview-help">Prüfe, ob die Karte vollständig sichtbar ist. Ein kleiner Rand außerhalb der Karte ist unproblematisch.</p>
           <button id="analyzeButton" class="primary-button wide-button" type="button">Karte erkennen</button>
         </div>
       </section>
@@ -81,33 +124,37 @@
 
       <section id="resultPanel" class="panel result-panel hidden">
         <div class="section-heading">
-          <div class="step-badge">2</div>
+          <div class="step-badge">02</div>
           <div>
-            <h2>Erkannte Treffer</h2>
-            <p>Die Treffer werden aus Text, Kartenmechanik, Kartennummer, Setgröße und Kartenbild gemeinsam bewertet.</p>
+            <p class="panel-kicker">ERGEBNIS</p>
+            <h2>Erkannte Karte</h2>
+            <p>Wähle die Karte aus, die deinem Foto entspricht. Die passende Cardmarket-Seite wird anschließend direkt geöffnet.</p>
           </div>
         </div>
         <div id="resultMessage" class="notice hidden"></div>
         <div id="results" class="card-results"></div>
       </section>
 
-      <section class="panel ai-panel">
+      <section id="aiPanel" class="panel ai-panel">
         <details>
-          <summary>KI-Bilderkennung verbinden</summary>
-          <div class="manual-content">
-            <p>Für den neuen bildbasierten Modus wird ein kleiner privater Cloudflare-Worker benötigt. Ohne Verbindung arbeitet die bisherige lokale Hybrid-Erkennung weiter.</p>
+          <summary>
+            <span>KI-Verbindung</span>
+            <span class="summary-status"><i></i> Cloudflare</span>
+          </summary>
+          <div class="ai-content">
+            <p>Die KI liest Kartenname, Nummer und Set. Die lokale Erkennung bleibt als Rückfallebene aktiv.</p>
             <div class="form-grid">
               <label>
                 Worker-Adresse
-                <input id="aiEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="https://cardscan-ai.DEIN-NAME.workers.dev" />
+                <input id="aiEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="https://carddex-ai….workers.dev" />
               </label>
               <label>
                 Privater Schlüssel
-                <input id="aiSecret" type="password" autocomplete="off" placeholder="dein selbst gewählter Schlüssel" />
+                <input id="aiSecret" type="password" autocomplete="off" placeholder="SCANNER_KEY" />
               </label>
             </div>
             <button id="saveAiSettingsButton" class="secondary-button wide-button" type="button">KI-Verbindung speichern</button>
-            <p id="aiStatus" class="ai-status muted"></p>
+            <p id="aiStatus" class="ai-status muted">Verbindung wird geprüft.</p>
           </div>
         </details>
       </section>
@@ -116,15 +163,15 @@
         <details>
           <summary>Karte manuell suchen</summary>
           <div class="manual-content">
-            <p>Falls eine ungewöhnliche oder sehr stark spiegelnde Karte nicht sicher erkannt wird.</p>
+            <p>Nutze die manuelle Suche, wenn eine seltene oder stark spiegelnde Karte nicht eindeutig erkannt wurde.</p>
             <div class="form-grid">
               <label>
                 Kartenname
-                <input id="manualName" type="text" autocomplete="off" placeholder="z. B. Xerneas" />
+                <input id="manualName" type="text" autocomplete="off" placeholder="z. B. Mega-Stalobor ex" />
               </label>
               <label>
                 Kartennummer
-                <input id="manualNumber" type="text" autocomplete="off" placeholder="z. B. 064/132" />
+                <input id="manualNumber" type="text" autocomplete="off" placeholder="z. B. 065/084" />
               </label>
             </div>
             <button id="manualSearchButton" class="secondary-button wide-button" type="button">Treffer suchen</button>
@@ -141,8 +188,16 @@
     </main>
 
     <footer>
+      <div class="footer-brand">
+        <strong>CARDEX AI</strong>
+        <span>PERSONAL CARD ASSISTANT</span>
+      </div>
+      <div class="footer-leds" aria-hidden="true">
+        <span>POWER <i class="status-light red"></i></span>
+        <span>DATA <i class="status-light green"></i></span>
+        <span>SYNC <i class="status-light amber"></i></span>
+      </div>
       <p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
-      <p class="connection-note">Für Texterkennung, Kartensuche, Bildvergleich und Cardmarket wird eine Internetverbindung benötigt.</p>
     </footer>
   </div>
 
@@ -150,7 +205,7 @@
     <div class="scanner-topbar">
       <button id="closeScannerButton" class="scanner-text-button" type="button">Abbrechen</button>
       <strong id="scannerTitle">Karte ausrichten</strong>
-      <span aria-hidden="true"></span>
+      <span class="live-led" aria-hidden="true"></span>
     </div>
     <div id="cameraViewport" class="camera-viewport">
       <video id="cameraVideo" playsinline muted></video>
@@ -175,6 +230,6 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="app.js?v=6" defer></script>
+  <script src="app.js?v=63" defer></script>
 </body>
 </html>

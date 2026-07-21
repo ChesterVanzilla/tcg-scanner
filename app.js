@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.2";
+const APP_VERSION = "6.3";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
@@ -1831,7 +1831,7 @@ function formatDebugText(ocr, parsed, selected, aiResult = null) {
   const name = parsed.nameHints[0]?.value || "nicht sicher erkannt";
   const identifier = parsed.identifiers[0] ? formatIdentifierForInput(parsed.identifiers[0]) : "nicht sicher erkannt";
   const blocks = [
-    `CardScan CM v${APP_VERSION}`,
+    `CardDex AI App v${APP_VERSION}`,
     `KI-Modus: ${getAiEndpoint() ? "verbunden" : "nicht verbunden"}`,
     `KI-Status: ${lastAiDiagnostic.status}`,
     `KI-Details: ${lastAiDiagnostic.detail || "keine"}`,
