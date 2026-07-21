@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#e53935" />
+  <meta name="theme-color" content="#1f1f1f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="CardDex AI" />
@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=63" />
+  <link rel="stylesheet" href="styles.css?v=64" />
   <title>CardDex AI</title>
 </head>
 <body>
@@ -21,7 +21,7 @@
     <header class="app-header">
       <div class="system-line" aria-hidden="true">
         <span>CARDEX SYSTEM</span>
-        <span class="system-status"><i></i> KI BEREIT</span>
+        <span class="system-status"><i id="systemStatusLed" class="status-light state-off"></i><strong id="systemStatusText">KI AUS</strong></span>
       </div>
 
       <div class="brand-row">
@@ -34,9 +34,9 @@
       </div>
 
       <div class="status-console" aria-label="Systemstatus">
-        <span><i class="status-light red"></i> POWER</span>
-        <span><i class="status-light green"></i> AI</span>
-        <span><i class="status-light amber"></i> SYNC</span>
+        <span><i id="powerLed" class="status-light state-amber pulse"></i> POWER</span>
+        <span><i id="aiLed" class="status-light state-off"></i> AI</span>
+        <span><i id="syncLed" class="status-light state-off"></i> SYNC</span>
       </div>
     </header>
 
@@ -73,7 +73,7 @@
             <div class="card-silhouette">
               <span></span><span></span><span></span>
             </div>
-            <p><i></i> SCAN BEREIT</p>
+            <p><i id="scanLed" class="status-light state-off"></i> <span id="scanStatusText">KI AUS</span></p>
           </div>
 
           <div class="upload-actions">
@@ -139,7 +139,7 @@
         <details>
           <summary>
             <span>KI-Verbindung</span>
-            <span class="summary-status"><i></i> Cloudflare</span>
+            <span class="summary-status"><i id="aiSummaryLed" class="status-light state-off"></i> <span id="aiSummaryText">Nicht verbunden</span></span>
           </summary>
           <div class="ai-content">
             <p>Die KI liest Kartenname, Nummer und Set. Die lokale Erkennung bleibt als Rückfallebene aktiv.</p>
@@ -193,9 +193,9 @@
         <span>PERSONAL CARD ASSISTANT</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
-        <span>POWER <i class="status-light red"></i></span>
-        <span>DATA <i class="status-light green"></i></span>
-        <span>SYNC <i class="status-light amber"></i></span>
+        <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
+        <span>AI <i id="footerAiLed" class="status-light state-off"></i></span>
+        <span>SYNC <i id="footerSyncLed" class="status-light state-off"></i></span>
       </div>
       <p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
     </footer>
@@ -230,6 +230,6 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="app.js?v=63" defer></script>
+  <script src="app.js?v=64" defer></script>
 </body>
 </html>

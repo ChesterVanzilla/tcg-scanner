@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.3";
+const APP_VERSION = "6.4";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
@@ -51,7 +51,19 @@ const els = {
   aiEndpoint: document.querySelector("#aiEndpoint"),
   aiSecret: document.querySelector("#aiSecret"),
   saveAiSettingsButton: document.querySelector("#saveAiSettingsButton"),
-  aiStatus: document.querySelector("#aiStatus")
+  aiStatus: document.querySelector("#aiStatus"),
+  systemStatusLed: document.querySelector("#systemStatusLed"),
+  systemStatusText: document.querySelector("#systemStatusText"),
+  powerLed: document.querySelector("#powerLed"),
+  aiLed: document.querySelector("#aiLed"),
+  syncLed: document.querySelector("#syncLed"),
+  scanLed: document.querySelector("#scanLed"),
+  scanStatusText: document.querySelector("#scanStatusText"),
+  aiSummaryLed: document.querySelector("#aiSummaryLed"),
+  aiSummaryText: document.querySelector("#aiSummaryText"),
+  footerPowerLed: document.querySelector("#footerPowerLed"),
+  footerAiLed: document.querySelector("#footerAiLed"),
+  footerSyncLed: document.querySelector("#footerSyncLed")
 };
 
 let preparedCanvases = [];
@@ -65,7 +77,71 @@ let lastAiDiagnostic = { status: "Noch nicht ausgeführt", detail: "" };
 let imagePreparationToken = 0;
 let isAnalyzing = false;
 
+const LED_CLASS_NAMES = ["state-off", "state-green", "state-red", "state-amber", "pulse"];
+
+function applyLed(element, color = "off", pulse = false) {
+  if (!element) return;
+  element.classList.remove(...LED_CLASS_NAMES);
+  element.classList.add(`state-${color}`);
+  if (pulse) element.classList.add("pulse");
+}
+
+function setPowerState(color = "green", pulse = false) {
+  applyLed(els.powerLed, color, pulse);
+  applyLed(els.footerPowerLed, color, pulse);
+}
+
+function setAiState(color = "off", pulse = false, summaryText = null) {
+  applyLed(els.aiLed, color, pulse);
+  applyLed(els.footerAiLed, color, pulse);
+  applyLed(els.aiSummaryLed, color, pulse);
+  if (summaryText && els.aiSummaryText) els.aiSummaryText.textContent = summaryText;
+}
+
+function setSyncState(color = "off", pulse = false) {
+  applyLed(els.syncLed, color, pulse);
+  applyLed(els.footerSyncLed, color, pulse);
+}
+
+function setScanState(color = "off", pulse = false, label = null) {
+  applyLed(els.scanLed, color, pulse);
+  applyLed(els.systemStatusLed, color, pulse);
+  if (label && els.scanStatusText) els.scanStatusText.textContent = label;
+  if (label && els.systemStatusText) els.systemStatusText.textContent = label;
+}
+
+function refreshStatusFromSettings() {
+  const hasAi = Boolean(getAiEndpoint());
+  setPowerState("green", false);
+  setAiState(hasAi ? "green" : "off", false, hasAi ? "Cloudflare aktiv" : "Nicht verbunden");
+  setSyncState("off", false);
+  setScanState(hasAi ? "green" : "off", false, hasAi ? "KI BEREIT" : "KI AUS");
+}
+
+function setAiCheckingState() {
+  setAiState("amber", true, "Prüfung läuft");
+  setScanState("amber", true, "KI PRÜFUNG");
+}
+
+function setAiErrorState() {
+  setAiState("red", false, "Cloudflare Fehler");
+  setScanState("red", false, "KI FEHLER");
+}
+
+function setSyncWorkingState() {
+  setSyncState("amber", true);
+}
+
+function setSyncSuccessState() {
+  setSyncState("green", false);
+}
+
+function setSyncErrorState() {
+  setSyncState("red", false);
+}
+
 loadAiSettings();
+refreshStatusFromSettings();
 
 els.openScannerButton.addEventListener("click", openLiveScanner);
 els.closeScannerButton.addEventListener("click", closeLiveScanner);
@@ -86,6 +162,9 @@ window.addEventListener("pagehide", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && !els.scannerModal.classList.contains("hidden")) closeLiveScanner();
 });
+
+window.addEventListener("error", () => setPowerState("red", false));
+window.addEventListener("unhandledrejection", () => setPowerState("red", false));
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
@@ -171,6 +250,7 @@ async function captureLiveCard() {
   try {
     const canvas = captureGuideFromVideo(els.cameraVideo, els.cameraViewport, els.scannerGuide);
     await setPreparedCanvases([canvas], "Live-Scanner", "exakt zugeschnitten");
+    refreshStatusFromSettings();
     closeLiveScanner();
     els.previewWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (error) {
@@ -244,10 +324,12 @@ async function handleImageSelection(event) {
     }
 
     await setPreparedCanvases(prepared.canvases, "Bildauswahl", prepared.status);
+    refreshStatusFromSettings();
     setProgress("Bild ist bereit", 100);
     els.previewWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (error) {
     console.error(error);
+    setSyncErrorState();
     showError("Das Bild konnte nicht vorbereitet werden. Bitte versuche es erneut oder nutze den Live-Scanner.");
   } finally {
     event.target.value = "";
@@ -402,6 +484,7 @@ function loadAiSettings() {
   els.aiEndpoint.value = localStorage.getItem(AI_ENDPOINT_KEY) || "";
   els.aiSecret.value = localStorage.getItem(AI_SECRET_KEY) || "";
   updateAiStatus();
+  refreshStatusFromSettings();
 }
 
 async function saveAiSettings() {
@@ -410,6 +493,7 @@ async function saveAiSettings() {
   if (endpoint && !/^https:\/\//i.test(endpoint)) {
     els.aiStatus.textContent = "Bitte eine vollständige HTTPS-Adresse eintragen.";
     els.aiStatus.className = "ai-status error";
+    setAiErrorState();
     return;
   }
   localStorage.setItem(AI_ENDPOINT_KEY, endpoint);
@@ -417,11 +501,13 @@ async function saveAiSettings() {
 
   if (!endpoint) {
     updateAiStatus();
+    refreshStatusFromSettings();
     return;
   }
 
   els.aiStatus.textContent = "KI-Verbindung wird geprüft …";
   els.aiStatus.className = "ai-status muted";
+  setAiCheckingState();
 
   try {
     const response = await fetch(`${endpoint}/health`, { cache: "no-store" });
@@ -435,9 +521,12 @@ async function saveAiSettings() {
 
     els.aiStatus.textContent = `KI-Verbindung hergestellt · CardDex AI ${data.version || ""}`.trim();
     els.aiStatus.className = "ai-status success";
+    setAiState("green", false, "Cloudflare aktiv");
+    setScanState("green", false, "KI BEREIT");
   } catch (error) {
     els.aiStatus.textContent = `Worker nicht erreichbar: ${String(error?.message || error)}`;
     els.aiStatus.className = "ai-status error";
+    setAiErrorState();
   }
 }
 
@@ -448,6 +537,13 @@ function updateAiStatus() {
     ? "KI-Erkennung aktiv. OCR und Bildvergleich bleiben als Rückfallebene eingeschaltet."
     : "Noch nicht verbunden. Die App nutzt weiterhin die lokale Hybrid-Erkennung.";
   els.aiStatus.className = `ai-status ${endpoint ? "success" : "muted"}`;
+  if (endpoint) {
+    setAiState("green", false, "Cloudflare aktiv");
+    setScanState("green", false, "KI BEREIT");
+  } else {
+    setAiState("off", false, "Nicht verbunden");
+    setScanState("off", false, "KI AUS");
+  }
 }
 
 function getAiEndpoint() {
@@ -478,6 +574,7 @@ async function identifyCardWithAi(canvas) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
   lastAiDiagnostic = { status: "Anfrage läuft", detail: "" };
+  setAiCheckingState();
 
   try {
     const headers = { "content-type": "application/json" };
@@ -517,6 +614,8 @@ async function identifyCardWithAi(canvas) {
       status: "Erfolgreich",
       detail: `Name: ${result.name || "–"} · Nummer: ${result.number || "–"}${result.denominator ? `/${result.denominator}` : ""}`
     };
+    setAiState("green", false, "Cloudflare aktiv");
+    setScanState("green", false, "KI BEREIT");
     return result;
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -524,6 +623,7 @@ async function identifyCardWithAi(canvas) {
     } else if (lastAiDiagnostic.status === "Anfrage läuft") {
       lastAiDiagnostic = { status: "Verbindungsfehler", detail: String(error?.message || error).slice(0, 700) };
     }
+    setAiErrorState();
     throw error;
   } finally {
     image = "";
@@ -602,6 +702,12 @@ async function analyzePreparedCard() {
   let usedLocalOcr = false;
 
   try {
+    setSyncWorkingState();
+    if (getAiEndpoint()) {
+      setAiCheckingState();
+    } else {
+      setScanState("amber", true, "LOKALE OCR");
+    }
     lastAiDiagnostic = getAiEndpoint()
       ? { status: "Anfrage vorbereitet", detail: "" }
       : { status: "Nicht verbunden", detail: "" };
@@ -619,6 +725,7 @@ async function analyzePreparedCard() {
         parsed = mergeAiResultIntoParsed(parsed, aiResult);
       } catch (error) {
         console.warn("KI-Erkennung nicht verfügbar, lokale Rückfallerkennung wird gestartet:", error);
+        setScanState("amber", true, "LOKALE OCR");
       }
     }
 
@@ -631,6 +738,7 @@ async function analyzePreparedCard() {
     const needsOcr = !hasStrongAiRecognition(aiResult) || candidates.length === 0;
     if (needsOcr) {
       usedLocalOcr = true;
+      setScanState("amber", true, "LOKALE OCR");
       setProgress("Lokale Rückfallerkennung wird geladen …", 52);
       const fallback = await runLightLocalRecognition(preparedCanvases);
       selected = fallback.selected;
@@ -666,16 +774,22 @@ Lokale OCR ausgeführt: ${usedLocalOcr ? "ja" : "nein – KI-Ergebnis war ausrei
     const enriched = await enrichTopCandidates(ranked, els.language.value);
 
     renderResults(enriched, parsed);
+    setSyncSuccessState();
+    setScanState(getAiEndpoint() ? "green" : "off", false, getAiEndpoint() ? "KI BEREIT" : "KI AUS");
     setProgress("Fertig", 100);
   } catch (error) {
     console.error(error);
+    setSyncErrorState();
     showError("Die Erkennung konnte nicht abgeschlossen werden. Bitte prüfe die Internetverbindung oder nutze die manuelle Suche.");
   } finally {
     await terminateOcrWorker();
     if (selected?.canvas && !preparedCanvases.includes(selected.canvas)) releaseCanvas(selected.canvas);
     compactPreparedCanvases();
     isAnalyzing = false;
-    setTimeout(() => setBusy(false), 120);
+    setTimeout(() => {
+      setBusy(false);
+      if (!preparedCanvases.length) refreshStatusFromSettings();
+    }, 120);
   }
 }
 
@@ -1384,6 +1498,7 @@ async function manualSearch() {
 
   setBusy(true);
   clearResults();
+  setSyncWorkingState();
   try {
     const parsed = {
       rawText: `${name}\n${els.manualNumber.value}`,
@@ -1403,9 +1518,12 @@ async function manualSearch() {
     setProgress("Preise werden geladen …", 90);
     const enriched = await enrichTopCandidates(ranked, els.language.value);
     renderResults(enriched, parsed);
+    setSyncSuccessState();
+    setScanState(getAiEndpoint() ? "green" : "off", false, getAiEndpoint() ? "KI BEREIT" : "KI AUS");
     setProgress("Fertig", 100);
   } catch (error) {
     console.error(error);
+    setSyncErrorState();
     showError("Die Kartensuche ist gerade nicht erreichbar. Bitte versuche es erneut.");
   } finally {
     setTimeout(() => setBusy(false), 250);
@@ -1854,6 +1972,7 @@ function formatDebugText(ocr, parsed, selected, aiResult = null) {
 }
 
 function showError(message) {
+  setSyncErrorState();
   els.resultPanel.classList.remove("hidden");
   els.resultMessage.className = "notice error";
   els.resultMessage.textContent = message;
@@ -1871,6 +1990,8 @@ function clearResults() {
 
 function setBusy(isBusy) {
   els.progressPanel.classList.toggle("hidden", !isBusy);
+  if (isBusy) setPowerState("amber", true);
+  else setPowerState("green", false);
   els.analyzeButton.disabled = isBusy;
   els.manualSearchButton.disabled = isBusy;
   els.openScannerButton.disabled = isBusy;
