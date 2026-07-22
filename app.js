@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.4";
+const APP_VERSION = "6.5";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
@@ -554,29 +554,164 @@ async function identifyCardWithAi(canvas) {
   const endpoint = getAiEndpoint();
   if (!endpoint) return null;
 
-  /*
-   * Für die KI reicht eine kleinere Arbeitsauflösung. Das reduziert die
-   * Base64-Zeichenfolge, den Safari-Speicherbedarf und die KI-Rechenzeit.
-   */
-  const uploadCanvas = createCanvas(600, 840);
-  const ctx = uploadCanvas.getContext("2d", { alpha: false });
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, uploadCanvas.width, uploadCanvas.height);
-  ctx.drawImage(canvas, 0, 0, uploadCanvas.width, uploadCanvas.height);
-
-  let image = "";
-  try {
-    image = uploadCanvas.toDataURL("image/jpeg", 0.78);
-  } finally {
-    releaseCanvas(uploadCanvas);
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  lastAiDiagnostic = { status: "Anfrage läuft", detail: "" };
+  const yellowBorder = isLikelyYellowBorderCard(canvas);
+  const attempts = yellowBorder
+    ? [
+        { mode: "detail", label: "Gelbrahmen-Detailansicht", create: () => createAiDetailSheet(canvas) },
+        { mode: "full", label: "Vollbild", create: () => createAiFullCardCanvas(canvas) }
+      ]
+    : [
+        { mode: "full", label: "Vollbild", create: () => createAiFullCardCanvas(canvas) },
+        { mode: "detail", label: "Detailansicht", create: () => createAiDetailSheet(canvas) }
+      ];
+  const errors = [];
+  let partialResult = null;
+  lastAiDiagnostic = { status: "Anfrage läuft", detail: yellowBorder ? "Gelber Rahmen erkannt · Detailanalyse" : "Vollbildanalyse" };
   setAiCheckingState();
 
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    if (attempt.mode === "detail") {
+      setProgress("KI prüft Name und Kartennummer vergrößert …", index === 0 ? 16 : 28);
+      lastAiDiagnostic = { status: yellowBorder ? "Gelbrahmen-Detailanalyse" : "Detailanalyse", detail: "Name und Sammlernummer werden vergrößert geprüft." };
+    } else if (index > 0) {
+      setProgress("KI prüft zusätzlich das vollständige Kartenbild …", 28);
+    }
+
+    const attemptCanvas = attempt.create();
+    try {
+      const result = await requestAiIdentification(attemptCanvas, attempt.mode);
+      if (hasUsefulAiResult(result)) {
+        const merged = mergeAiAttemptResults(partialResult, result);
+        if (hasStrongAiFields(merged) || attempt.mode === "detail") {
+          merged._attempt = attempt.mode;
+          merged._yellowBorder = yellowBorder;
+          lastAiDiagnostic = {
+            status: `${attempt.label} erfolgreich`,
+            detail: `Name: ${merged.name || "–"} · Nummer: ${merged.number || "–"}${merged.denominator ? `/${merged.denominator}` : ""}`
+          };
+          setAiState("green", false, "Cloudflare aktiv");
+          setScanState("green", false, "KI BEREIT");
+          return merged;
+        }
+        partialResult = merged;
+        errors.push(`${attempt.label}: nur Teilergebnis`);
+      } else {
+        errors.push(`${attempt.label}: keine verwertbaren Kartendaten`);
+      }
+    } catch (error) {
+      errors.push(`${attempt.label}: ${String(error?.message || error)}`);
+    } finally {
+      releaseCanvas(attemptCanvas);
+    }
+  }
+
+  if (partialResult && hasUsefulAiResult(partialResult)) {
+    partialResult._attempt = "partial";
+    partialResult._yellowBorder = yellowBorder;
+    lastAiDiagnostic = {
+      status: "KI-Teilergebnis",
+      detail: `Name: ${partialResult.name || "–"} · Nummer: ${partialResult.number || "–"}${partialResult.denominator ? `/${partialResult.denominator}` : ""}`
+    };
+    setAiState("green", false, "Cloudflare aktiv");
+    setScanState("amber", false, "KI + OCR");
+    return partialResult;
+  }
+
+  lastAiDiagnostic = {
+    status: "Keine KI-Daten",
+    detail: errors.join(" · ").slice(0, 700)
+  };
+  setAiErrorState();
+  throw new Error(errors.join(" · ") || "Die KI konnte keine Kartendaten lesen.");
+}
+
+function isLikelyYellowBorderCard(source) {
+  if (!source || source.width < 40 || source.height < 40) return false;
+  const sampleCanvas = createCanvas(80, 112);
+  const sampleContext = sampleCanvas.getContext("2d", { willReadFrequently: true });
+  sampleContext.drawImage(source, 0, 0, sampleCanvas.width, sampleCanvas.height);
+  const pixels = sampleContext.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data;
+
+  const fractions = [0.04, 0.06, 0.08, 0.92, 0.94, 0.96];
+  let yellow = 0;
+  let valid = 0;
+  for (let index = 1; index <= 22; index += 1) {
+    const along = index / 23;
+    for (const edge of fractions) {
+      for (const [fx, fy] of [[edge, along], [along, edge]]) {
+        const x = Math.max(0, Math.min(sampleCanvas.width - 1, Math.round(sampleCanvas.width * fx)));
+        const y = Math.max(0, Math.min(sampleCanvas.height - 1, Math.round(sampleCanvas.height * fy)));
+        const offset = (y * sampleCanvas.width + x) * 4;
+        const red = pixels[offset];
+        const green = pixels[offset + 1];
+        const blue = pixels[offset + 2];
+        valid += 1;
+        if (red >= 145 && green >= 105 && blue <= 135 && red > blue * 1.35 && green > blue * 1.18) yellow += 1;
+      }
+    }
+  }
+  releaseCanvas(sampleCanvas);
+  return valid > 0 && yellow / valid >= 0.13;
+}
+
+function createAiFullCardCanvas(source) {
+  const canvas = createCanvas(720, 1008);
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function createAiDetailSheet(source) {
+  const canvas = createCanvas(1400, 1000);
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.fillStyle = "#202326";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f7f4ea";
+  ctx.font = "700 28px ui-monospace, monospace";
+  ctx.fillText("FULL CARD", 34, 52);
+  ctx.fillText("NAME / KP", 660, 52);
+  ctx.fillText("COLLECTOR NUMBER / SET", 660, 385);
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, source.width, source.height, 30, 75, 580, 812);
+
+  drawAiDetailRegion(ctx, source, { x: 0.075, y: 0.005, width: 0.83, height: 0.145 }, 650, 75, 720, 270);
+  drawAiDetailRegion(ctx, source, { x: 0.005, y: 0.825, width: 0.91, height: 0.17 }, 650, 410, 720, 260);
+  drawAiDetailRegion(ctx, source, { x: 0.005, y: 0.885, width: 0.68, height: 0.105 }, 650, 730, 720, 190);
+
+  ctx.strokeStyle = "#e53935";
+  ctx.lineWidth = 8;
+  ctx.strokeRect(26, 71, 588, 820);
+  ctx.strokeRect(646, 71, 728, 278);
+  ctx.strokeRect(646, 406, 728, 268);
+  ctx.strokeRect(646, 726, 728, 198);
+  return canvas;
+}
+
+function drawAiDetailRegion(ctx, source, region, dx, dy, dw, dh) {
+  const sx = Math.round(source.width * region.x);
+  const sy = Math.round(source.height * region.y);
+  const sw = Math.round(source.width * region.width);
+  const sh = Math.round(source.height * region.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(dx, dy, dw, dh);
+  ctx.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+
+async function requestAiIdentification(canvas, mode) {
+  const endpoint = getAiEndpoint();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55000);
+  let image = "";
+
   try {
+    image = canvas.toDataURL("image/jpeg", mode === "detail" ? 0.84 : 0.80);
     const headers = { "content-type": "application/json" };
     const secret = String(localStorage.getItem(AI_SECRET_KEY) || "").trim();
     if (secret) headers["x-scanner-key"] = secret;
@@ -584,51 +719,57 @@ async function identifyCardWithAi(canvas) {
     const response = await fetch(`${endpoint}/identify`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ image, language: els.language.value }),
+      body: JSON.stringify({ image, language: els.language.value, mode }),
       signal: controller.signal,
       cache: "no-store"
     });
 
-    image = "";
     const responseText = await response.text();
     let result = null;
     try { result = JSON.parse(responseText); } catch { /* Rohtext wird unten ausgegeben. */ }
 
     if (!response.ok) {
       const detail = result?.detail || result?.error || responseText || "keine Serverantwort";
-      lastAiDiagnostic = { status: `Fehler ${response.status}`, detail: String(detail).slice(0, 700) };
       throw new Error(`KI-Dienst ${response.status}: ${detail}`);
     }
-
-    if (!result || typeof result !== "object") {
-      lastAiDiagnostic = { status: "Ungültige Antwort", detail: responseText.slice(0, 700) };
-      throw new Error("Ungültige KI-Antwort");
-    }
-
-    if (result.error) {
-      lastAiDiagnostic = { status: "KI-Fehler", detail: String(result.error).slice(0, 700) };
-      throw new Error(String(result.error));
-    }
-
-    lastAiDiagnostic = {
-      status: "Erfolgreich",
-      detail: `Name: ${result.name || "–"} · Nummer: ${result.number || "–"}${result.denominator ? `/${result.denominator}` : ""}`
-    };
-    setAiState("green", false, "Cloudflare aktiv");
-    setScanState("green", false, "KI BEREIT");
+    if (!result || typeof result !== "object") throw new Error("Ungültige KI-Antwort");
+    if (result.error) throw new Error(String(result.detail || result.error));
     return result;
   } catch (error) {
-    if (error?.name === "AbortError") {
-      lastAiDiagnostic = { status: "Zeitüberschreitung", detail: "Der Worker hat innerhalb von 45 Sekunden nicht geantwortet." };
-    } else if (lastAiDiagnostic.status === "Anfrage läuft") {
-      lastAiDiagnostic = { status: "Verbindungsfehler", detail: String(error?.message || error).slice(0, 700) };
-    }
-    setAiErrorState();
+    if (error?.name === "AbortError") throw new Error("Zeitüberschreitung nach 55 Sekunden");
     throw error;
   } finally {
     image = "";
     clearTimeout(timeout);
   }
+}
+
+function hasUsefulAiResult(result) {
+  if (!result || typeof result !== "object") return false;
+  const name = String(result.name || "").trim();
+  const number = normalizeCollectorNumber(result.number || "");
+  const rejectedName = /^usions?$|fusions?[-\s]*angriff|fusion[-\s]*strike|fließender[-\s]*angriff|rapid[-\s]*strike/i.test(name);
+  return Boolean(number || (name.length >= 3 && !rejectedName));
+}
+
+function hasStrongAiFields(result) {
+  return Boolean(String(result?.name || "").trim().length >= 3 && normalizeCollectorNumber(result?.number || ""));
+}
+
+function mergeAiAttemptResults(first, second) {
+  const a = first && typeof first === "object" ? first : {};
+  const b = second && typeof second === "object" ? second : {};
+  return {
+    ...a,
+    ...b,
+    name: String(b.name || a.name || "").trim(),
+    number: normalizeCollectorNumber(b.number || a.number || ""),
+    denominator: String(b.denominator || a.denominator || "").replace(/\D/g, ""),
+    setCode: String(b.setCode || a.setCode || "").toUpperCase().replace(/[^A-Z0-9]/g, ""),
+    language: b.language || a.language || els.language.value,
+    confidence: Math.max(Number(a.confidence || 0), Number(b.confidence || 0)),
+    notes: [a.notes, b.notes].filter(Boolean).join(" · ")
+  };
 }
 
 function mergeAiResultIntoParsed(parsed, ai) {
@@ -656,6 +797,8 @@ function mergeAiResultIntoParsed(parsed, ai) {
       denominator: denominator || null,
       setCode: setCode || null,
       score: 255 + confidence * 80,
+      reliability: Math.max(0.78, confidence || 0),
+      kind: "ai",
       source: "KI-Bilderkennung",
       raw: [setCode, number, denominator ? `/${denominator}` : ""].filter(Boolean).join(" ")
     });
@@ -887,15 +1030,17 @@ async function chooseBestCanvasAndOrientationLight(worker, canvases) {
 async function recognizeDetailedCardLight(worker, canvas, quick) {
   const observations = [...(quick?.observations || [])];
   const jobs = [
-    { label: "Name Kopfzeile", region: { x: 0.025, y: 0.0, width: 0.95, height: 0.18 }, mode: "title", psm: "11", preprocessing: "local-contrast" },
-    { label: "Name Trainer/Full-Art", region: { x: 0.03, y: 0.015, width: 0.94, height: 0.24 }, mode: "title", psm: "11" },
-    { label: "Nummer Fußzeile", region: { x: 0.01, y: 0.855, width: 0.76, height: 0.14 }, mode: "number", psm: "11", preprocessing: "local-contrast" },
+    { label: "Name oben – exakt", region: { x: 0.095, y: 0.008, width: 0.59, height: 0.125 }, mode: "title", psm: "7", preprocessing: "local-contrast" },
+    { label: "Name Kopfzeile – erweitert", region: { x: 0.02, y: 0.0, width: 0.91, height: 0.18 }, mode: "title", psm: "11", preprocessing: "local-contrast" },
+    { label: "Nummer Galerie/Promo – exakt", region: { x: 0.012, y: 0.878, width: 0.63, height: 0.115 }, mode: "number", psm: "7", preprocessing: "local-contrast" },
+    { label: "Nummer Galerie/Promo – binär", region: { x: 0.012, y: 0.892, width: 0.63, height: 0.095 }, mode: "number", psm: "7", preprocessing: "local-binary" },
+    { label: "Nummer Fußzeile – erweitert", region: { x: 0.005, y: 0.82, width: 0.91, height: 0.175 }, mode: "number", psm: "11", preprocessing: "local-contrast" },
     { label: "Mechanik / Kontext", region: { x: 0.02, y: 0.74, width: 0.96, height: 0.25 }, mode: "mechanic", psm: "11", preprocessing: "local-contrast" }
   ];
 
   for (let index = 0; index < jobs.length; index += 1) {
-    const start = 64 + (index / jobs.length) * 8;
-    const end = 64 + ((index + 1) / jobs.length) * 8;
+    const start = 64 + (index / jobs.length) * 10;
+    const end = 64 + ((index + 1) / jobs.length) * 10;
     observations.push(await recognizeRegion(worker, canvas, {
       ...jobs[index],
       progressStart: start,
@@ -938,24 +1083,23 @@ async function chooseBestCanvasAndOrientation(worker, canvases) {
 
 async function recognizeQuickCard(worker, canvas, start, end) {
   const observations = [];
-  const first = start + (end - start) * 0.42;
+  const first = start + (end - start) * 0.46;
 
   observations.push(await recognizeRegion(worker, canvas, {
-    label: "Schnelltest Name",
-    region: { x: 0.035, y: 0.005, width: 0.93, height: 0.18 },
+    label: "Schnelltest Name – exakt",
+    region: { x: 0.095, y: 0.008, width: 0.59, height: 0.125 },
     mode: "title",
     psm: "7",
+    preprocessing: "local-contrast",
     progressStart: start,
     progressEnd: first
   }));
 
-  // Holo-, Mega- und ex-Karten besitzen oft stark strukturierte Fußzeilen.
-  // Lokaler Kontrast macht die kleine Sammlernummer deutlich stabiler lesbar.
   observations.push(await recognizeRegion(worker, canvas, {
-    label: "Schnelltest Nummer – Lokal-Kontrast",
-    region: { x: 0.015, y: 0.865, width: 0.72, height: 0.125 },
+    label: "Schnelltest Nummer – Galerie/Promo",
+    region: { x: 0.012, y: 0.878, width: 0.63, height: 0.115 },
     mode: "number",
-    psm: "11",
+    psm: "7",
     preprocessing: "local-contrast",
     progressStart: first,
     progressEnd: end
@@ -1026,7 +1170,7 @@ async function recognizeRegion(worker, canvas, options) {
   };
 
   const whitelist = options.mode === "number"
-    ? "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöü0123456789/| -"
+    ? "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/| -"
     : options.mode === "mechanic" || options.mode === "context"
       ? "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789/|€- "
       : "";
@@ -1075,8 +1219,8 @@ function createProcessedCrop(source, region, mode, preprocessing) {
   const sy = Math.max(0, Math.round(source.height * region.y));
   const sw = Math.max(1, Math.min(source.width - sx, Math.round(source.width * region.width)));
   const sh = Math.max(1, Math.min(source.height - sy, Math.round(source.height * region.height)));
-  const targetWidth = mode === "number" || mode === "mechanic" || mode === "context" ? 1050 : 960;
-  const targetHeight = Math.max(150, Math.round(sh * targetWidth / sw));
+  const targetWidth = mode === "number" ? 1500 : mode === "mechanic" || mode === "context" ? 1150 : 1200;
+  const targetHeight = Math.max(180, Math.round(sh * targetWidth / sw));
   const canvas = createCanvas(targetWidth, targetHeight);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.imageSmoothingEnabled = true;
@@ -1241,23 +1385,28 @@ function extractContextNameHints(observations) {
 }
 
 function extractMechanics(observations) {
-  const joined = observations.map(item => item.text).join(" ")
-    .replace(/[€£]/g, "e")
-    .replace(/[—–_]/g, "-")
-    .toLowerCase();
   const mechanics = [];
   const add = value => { if (!mechanics.includes(value)) mechanics.push(value); };
 
-  if (/\bmega\b|mega[-\s]*(?:entwick|evol)/i.test(joined)) add("mega");
-  if (/pok[eé]mon[-\s]*(?:e?x|€x)|\b[e€]x[-\s]*(?:regel|rule)|\bex\b/i.test(joined)) add("ex");
-  if (/\bgx\b|pok[eé]mon[-\s]*gx/i.test(joined)) add("gx");
-  if (/\bvmax\b/i.test(joined)) add("vmax");
-  if (/\bvstar\b|v[-\s]*star/i.test(joined)) add("vstar");
-  if (/v[-\s]*union/i.test(joined)) add("v-union");
-  if (/tag[-\s]*team/i.test(joined)) add("tag-team");
-  if (/\bbreak\b/i.test(joined)) add("break");
-  if (/strahlend|radiant/i.test(joined)) add("radiant");
-  if (/gl[aä]nzend|shining/i.test(joined)) add("shining");
+  for (const observation of observations) {
+    const confidence = Number(observation.confidence || 0);
+    if (confidence < 34) continue;
+    const text = String(observation.text || "")
+      .replace(/[€£]/g, "e")
+      .replace(/[—–_]/g, "-")
+      .toLowerCase();
+
+    if (/\bmega\b|mega[-\s]*(?:entwick|evol)/i.test(text)) add("mega");
+    if (/pok[eé]mon[-\s]*(?:e?x)|\bex[-\s]*(?:regel|rule)|\b[a-zäöüß'\-]{3,}\s+ex\b/i.test(text)) add("ex");
+    if (/pok[eé]mon[-\s]*gx|gx[-\s]*(?:regel|rule)|\b[a-zäöüß'\-]{3,}\s+gx\b/i.test(text)) add("gx");
+    if (/\bvmax\b/i.test(text)) add("vmax");
+    if (/\bvstar\b|v[-\s]*star/i.test(text)) add("vstar");
+    if (/v[-\s]*union/i.test(text)) add("v-union");
+    if (/tag[-\s]*team/i.test(text)) add("tag-team");
+    if (/\bbreak\b/i.test(text)) add("break");
+    if (/strahlend|radiant/i.test(text)) add("radiant");
+    if (/gl[aä]nzend|shining/i.test(text)) add("shining");
+  }
   return mechanics;
 }
 
@@ -1293,7 +1442,11 @@ function extractNameHints(observations) {
     /illustrator|illustration|copyright|pokemon\/nintendo/i,
     /wirf|lege|deines\s+gegners|angriff|energie/i,
     /during|opponent|attack|energy/i,
-    /größe|gewicht|height|weight/i
+    /größe|gewicht|height|weight/i,
+    /^usions?$/i,
+    /fusions?[-\s]*angriff|fusion[-\s]*strike/i,
+    /fließender[-\s]*angriff|fliessender[-\s]*angriff|rapid[-\s]*strike/i,
+    /einzel[-\s]*angriff|single[-\s]*strike/i
   ];
 
   const stopWords = new Set([
@@ -1308,6 +1461,7 @@ function extractNameHints(observations) {
     for (const rawLine of observation.text.split(/\r?\n/)) {
       const original = cleanOcrLine(rawLine);
       if (!original || rejectPatterns.some(pattern => pattern.test(original))) continue;
+      if (observation.confidence < 35 && !/exakt|Name Standard/i.test(observation.label)) continue;
 
       const line = original
         .replace(/\b(?:PHASE|STAGE)\s*[12I]\b/gi, " ")
@@ -1333,6 +1487,7 @@ function extractNameHints(observations) {
       else if (words.length > 3) score -= (words.length - 3) * 15;
       if (/^[A-ZÄÖÜ][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ'\-]+(?:\s+[A-ZÄÖÜ0-9][A-Za-zÄÖÜäöüßÉéÈèÀàÁáÂâÇçÑñ0-9'\-]+)*$/.test(line)) score += 18;
       if (/standard/i.test(observation.label)) score += 14;
+      if (/oben – exakt/i.test(observation.label)) score += 34;
       if (/schnelltest/i.test(observation.label)) score += 5;
       score += Math.min(22, line.replace(/[^A-Za-zÄÖÜäöüß]/g, "").length * 0.7);
       candidates.push({ value: line, score, confidence: observation.confidence, source: observation.label });
@@ -1360,15 +1515,12 @@ function extractNameHints(observations) {
 
 function extractCardIdentifiers(observations) {
   const candidates = [];
-  const add = (number, denominator, setCode, score, source, raw) => {
+  const add = (number, denominator, setCode, score, source, raw, reliability = null, kind = "generic") => {
     const denominatorDigits = String(denominator || "").toUpperCase().replace(/O/g, "0").replace(/\s+/g, "").replace(/[^0-9]/g, "");
     const denominatorValue = denominatorDigits ? Number(denominatorDigits) : null;
     if (denominatorDigits && (!Number.isFinite(denominatorValue) || denominatorValue < 10 || denominatorValue > 999)) return;
 
     let normalizedNumber = normalizeCollectorNumber(number);
-    // Lokale Kontrastfilter können am linken Rand einen zusätzlichen Strich als
-    // „1“ lesen (z. B. 1065/084). Bei vorhandenem Nenner ist die letzte
-    // dreistellige Folge meist die echte Sammlernummer.
     if (!normalizedNumber && denominatorValue) {
       const compact = String(number || "").toUpperCase().replace(/O/g, "0").replace(/[^A-Z0-9]/g, "");
       const match = compact.match(/^([A-Z]*)(\d{4})$/);
@@ -1382,15 +1534,26 @@ function extractCardIdentifiers(observations) {
       }
     }
     if (!normalizedNumber) return;
+
     const numericNumber = Number(normalizedNumber.replace(/^[A-Z]+/, ""));
     if (denominatorValue && Number.isFinite(numericNumber) && numericNumber > denominatorValue + 200) return;
+
+    const rawText = String(raw || "");
+    const alphaPrefix = normalizedNumber.match(/^[A-Z]+/)?.[0] || "";
+    const looksCopyright = /©|POK[EÉ]MON|NINTENDO|CREATURES|GAME\s*FREAK|\b20(?:0\d|1\d|2\d)\b/i.test(rawText);
+    if (!alphaPrefix && denominatorValue >= 19 && denominatorValue <= 29 && looksCopyright) return;
+    if (!alphaPrefix && numericNumber >= 1995 && numericNumber <= 2035) return;
+
+    const calculatedReliability = reliability ?? Math.max(0.15, Math.min(0.86, (score - 80) / 150));
     candidates.push({
       number: normalizedNumber,
       denominator: denominatorValue,
       setCode: normalizeSetCode(setCode),
       score,
+      reliability: Math.max(0, Math.min(1, calculatedReliability)),
+      kind,
       source,
-      raw
+      raw: rawText
     });
   };
 
@@ -1405,32 +1568,40 @@ function extractCardIdentifiers(observations) {
       .filter(Boolean);
 
     for (const line of lines) {
-      // Tesseract trennt kleine Ziffern häufig (z. B. „1 32“) oder liest den
-      // Schrägstrich als I/l/|. Diese Muster werden nur im Nummernbereich
-      // ausgewertet, damit Angriffs- und KP-Werte nicht als Kartennummer enden.
+      const normalizedOcr = line.replace(/(?<=\d)O|O(?=\d)/g, "0");
+
+      // Trainer Gallery und Galarian Gallery drucken das Präfix auf beiden
+      // Seiten des Schrägstrichs: TG07/TG30 bzw. GG20/GG70.
+      for (const match of normalizedOcr.matchAll(/\b(TG|GG)\s*([0-9]{1,3})\s*[\/|IL]\s*(?:TG|GG)\s*([0-9]{1,3})\b/g)) {
+        add(`${match[1]}${match[2]}`, match[3], "", baseScore + 220, observation.label, line, 0.98, "gallery");
+      }
+
+      // Black-Star-Promos besitzen häufig keinen Schrägstrich.
+      for (const match of normalizedOcr.matchAll(/\b(SVP|SWSH|SM|XY|BW)\s*(?:DE|EN)?\s*[- ]?\s*([0-9]{1,4})\b/g)) {
+        add(`${match[1]}${match[2]}`, "", "", baseScore + 190, observation.label, line, 0.96, "promo");
+      }
+
+      const copyrightLine = /©|POK[EÉ]MON|NINTENDO|CREATURES|GAME\s*FREAK|\b20(?:0\d|1\d|2\d)\b/i.test(line);
+      if (copyrightLine) continue;
+
       const withLanguage = new RegExp(`\\b([A-Z][A-Z0-9]{1,5})\\s+(?:DE|EN|FR|IT|ES|PT|OF|0F|OE|DF)\\s+([A-Z]*${spacedDigits})\\s*[\\/|IL]\\s*(${denominatorDigits})(?=$|[^0-9])`, "g");
       const withoutLanguage = new RegExp(`\\b([A-Z][A-Z0-9]{1,5})\\s+([A-Z]*${spacedDigits})\\s*[\\/|IL]\\s*(${denominatorDigits})(?=$|[^0-9])`, "g");
       const genericSlash = new RegExp(`(?:^|[^A-Z0-9])([A-Z]*${spacedDigits})\\s*[\\/|IL]\\s*(${denominatorDigits})(?=$|[^0-9])`, "g");
 
-      for (const match of line.matchAll(withLanguage)) add(match[2], match[3], match[1], baseScore + 150, observation.label, line);
-      for (const match of line.matchAll(withoutLanguage)) add(match[2], match[3], match[1], baseScore + 137, observation.label, line);
-      for (const match of line.matchAll(genericSlash)) add(match[1], match[2], "", baseScore + 112, observation.label, line);
+      for (const match of line.matchAll(withLanguage)) add(match[2], match[3], match[1], baseScore + 150, observation.label, line, 0.88, "set-number");
+      for (const match of line.matchAll(withoutLanguage)) add(match[2], match[3], match[1], baseScore + 137, observation.label, line, 0.78, "set-number");
+      for (const match of line.matchAll(genericSlash)) add(match[1], match[2], "", baseScore + 112, observation.label, line, observation.confidence >= 55 ? 0.72 : 0.42, "slash");
 
-      // Manche OCR-Ausgaben verlieren den Schrägstrich vollständig, lassen aber
-      // zwei klar getrennte Zahlenblöcke stehen (z. B. „064 132“).
-      for (const match of line.replace(/O/g, "0").matchAll(/(?:^|[^A-Z0-9])([0-9]{2,4})\s+([0-9]{2,3})(?=$|[^A-Z0-9])/g)) {
+      for (const match of normalizedOcr.matchAll(/(?:^|[^A-Z0-9])([0-9]{2,4})\s+([0-9]{2,3})(?=$|[^A-Z0-9])/g)) {
         const numerator = Number(normalizeCollectorNumber(match[1]).replace(/^[A-Z]+/, ""));
         const denominator = Number(match[2]);
         if (numerator > 0 && denominator >= 20 && numerator <= denominator + 100) {
-          add(match[1], match[2], "", baseScore + 82, observation.label, line);
+          add(match[1], match[2], "", baseScore + 82, observation.label, line, 0.38, "spaced");
         }
       }
 
-      // Ist der Trenner komplett verschwunden, wird ein kompakter Ziffernblock
-      // in plausible Nummer/Setgröße-Paare zerlegt. Das fängt Ausgaben wie
-      // „MEG 1030713240“ ab, in denen 030 und 132 noch enthalten sind.
       const likelySetCode = line.match(/\b(?!DE\b|EN\b|FR\b|IT\b|ES\b|PT\b)([A-Z][A-Z0-9]{1,5})\b/)?.[1] || "";
-      for (const runMatch of line.replace(/O/g, "0").matchAll(/\d{5,12}/g)) {
+      for (const runMatch of normalizedOcr.matchAll(/\d{5,12}/g)) {
         const run = runMatch[0];
         for (let start = 0; start <= Math.min(3, run.length - 4); start += 1) {
           for (const numberLength of [3, 2, 4]) {
@@ -1452,23 +1623,17 @@ function extractCardIdentifiers(observations) {
                 compactScore += gap === 0 ? 18 : gap === 1 ? 10 : 3;
                 compactScore -= start * 3;
                 if (likelySetCode) compactScore += 10;
-                add(numberRaw, denominatorRaw, likelySetCode, compactScore, observation.label, line);
+                add(numberRaw, denominatorRaw, likelySetCode, compactScore, observation.label, line, 0.28, "compact");
               }
             }
           }
         }
       }
-
-      // Promokarten tragen oft nur Setcode + laufende Nummer, beispielsweise
-      // „SVP 085“ oder „SWSH 020“.
-      for (const match of line.replace(/O/g, "0").matchAll(/\b(SVP|SWSH|SM|XY|BW)\s*(?:DE|EN)?\s*[- ]?\s*([0-9]{1,4})\b/g)) {
-        add(match[2], "", match[1], baseScore + 94, observation.label, line);
-      }
     }
   }
 
   return candidates
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => (b.reliability - a.reliability) || (b.score - a.score))
     .filter((item, index, array) => array.findIndex(other =>
       collectorNumbersEqual(other.number, item.number)
       && other.denominator === item.denominator
@@ -1480,9 +1645,9 @@ function extractCardIdentifiers(observations) {
 function scoreQuickRecognition(parsed, observations) {
   let score = 0;
   if (parsed.nameHints[0]) score += Math.min(100, parsed.nameHints[0].score);
-  if (parsed.identifiers[0]) score += Math.min(135, parsed.identifiers[0].score);
-  if (parsed.identifiers[0]?.denominator) score += 48;
-  if (parsed.identifiers[0]?.setCode) score += 20;
+  if (parsed.identifiers[0]) score += Math.min(135, parsed.identifiers[0].score) * (parsed.identifiers[0].reliability ?? 0.5);
+  if (parsed.identifiers[0]?.denominator && (parsed.identifiers[0].reliability ?? 0) >= 0.65) score += 48;
+  if (parsed.identifiers[0]?.setCode && (parsed.identifiers[0].reliability ?? 0) >= 0.65) score += 20;
   if (parsed.mechanics?.length) score += 10;
   score += observations.reduce((sum, item) => sum + Math.max(0, item.confidence - 40) * 0.08, 0);
   return score;
@@ -1504,8 +1669,8 @@ async function manualSearch() {
       rawText: `${name}\n${els.manualNumber.value}`,
       normalizedText: normalizeText(`${name} ${els.manualNumber.value}`),
       nameHints: name ? [{ value: name, score: 100, confidence: 100, source: "manuell" }] : [],
-      mechanics: extractMechanics([{ text: name, mode: "manual" }]),
-      identifiers: manualIdentifier.number ? [{ ...manualIdentifier, score: 120, source: "manuell", raw: els.manualNumber.value }] : [],
+      mechanics: extractMechanics([{ text: name, mode: "manual", confidence: 100, label: "Manuell" }]),
+      identifiers: manualIdentifier.number ? [{ ...manualIdentifier, score: 300, reliability: 1, kind: "manual", source: "manuell", raw: els.manualNumber.value }] : [],
       numbers: manualIdentifier.number ? [manualIdentifier.number] : [],
       denominators: manualIdentifier.denominator ? [manualIdentifier.denominator] : [],
       setCodes: manualIdentifier.setCode ? [manualIdentifier.setCode] : []
@@ -1656,12 +1821,26 @@ async function rankCandidates(candidates, parsed, language, scannedCanvases) {
     });
   }
 
+  const recognitionStrength = getRecognitionStrength(parsed);
+  const imageWeight = recognitionStrength >= 0.78 ? 270 : recognitionStrength >= 0.48 ? 380 : 500;
   ranked = ranked.map(card => {
-    const imageBonus = card._imageScore === null ? 0 : Math.round(card._imageScore * 260);
+    const imageBonus = card._imageScore === null ? 0 : Math.round(card._imageScore * imageWeight);
     return { ...card, _score: card._metaScore + imageBonus };
   });
 
   return ranked.sort((a, b) => b._score - a._score).slice(0, 14);
+}
+
+function getRecognitionStrength(parsed) {
+  const identifierStrength = Math.max(0, ...(parsed.identifiers || []).map(item => Number(item.reliability || 0)));
+  const nameStrength = Math.max(0, ...(parsed.nameHints || []).map(item => Math.min(1, Number(item.confidence || 0) / 100)));
+  return Math.max(identifierStrength, nameStrength * 0.85);
+}
+
+function getReliableIdentifierMatch(parsed, card, minimum = 0) {
+  return (parsed.identifiers || [])
+    .filter(item => Number(item.reliability || 0) >= minimum && collectorNumbersEqual(item.number, card.localId))
+    .sort((a, b) => Number(b.reliability || 0) - Number(a.reliability || 0))[0] || null;
 }
 
 function scoreCardMetadata(card, parsed) {
@@ -1670,31 +1849,42 @@ function scoreCardMetadata(card, parsed) {
   const cardMechanics = mechanicsFromCardName(card.name || "");
   let score = 0;
 
-  if (parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) score += 265;
-  const denominator = parsed.identifiers[0]?.denominator;
-  if (denominator && Number(card._setBrief?.cardCount?.official) === Number(denominator)) score += 320;
-  if (parsed.setCodes.flatMap(setCodeVariants).some(code => setCodeMatchesCard(code, card))) score += 115;
+  const numberMatch = getReliableIdentifierMatch(parsed, card, 0.2);
+  if (numberMatch) {
+    const reliability = Number(numberMatch.reliability || 0);
+    score += Math.round(285 * reliability);
+    const officialTotal = Number(card._setBrief?.cardCount?.official || card.set?.cardCount?.official || 0);
+    if (numberMatch.denominator && officialTotal === Number(numberMatch.denominator)) {
+      score += Math.round(245 * reliability);
+    }
+  }
+
+  const setCodeMatch = (parsed.identifiers || []).some(identifier =>
+    Number(identifier.reliability || 0) >= 0.65
+    && identifier.setCode
+    && setCodeVariants(identifier.setCode).some(code => setCodeMatchesCard(code, card))
+  );
+  if (setCodeMatch) score += 115;
 
   for (const mechanic of parsed.mechanics || []) {
-    if (cardMechanics.includes(mechanic)) score += mechanic === "mega" ? 105 : 72;
-    else if (mechanic === "ex" && /\bex\b/i.test(cardName)) score += 55;
+    if (cardMechanics.includes(mechanic)) score += mechanic === "mega" ? 90 : 55;
+    else if (mechanic === "ex" && /\bex\b/i.test(cardName)) score += 42;
   }
 
   for (const hint of parsed.nameHints) {
     const normalizedHint = normalizeText(hint.value);
     const hintBase = normalizeText(stripCardMechanics(hint.value));
     if (!normalizedHint) continue;
-    if (cardName === normalizedHint) score += 260;
-    else if (cardName.includes(normalizedHint) || normalizedHint.includes(cardName)) score += 185;
-    score += Math.round(similarity(cardName, normalizedHint) * 120);
-    score += Math.round(tokenOverlap(cardName, normalizedHint) * 60);
+    const hintReliability = Math.max(0.25, Math.min(1, Number(hint.confidence || 45) / 100));
+    if (cardName === normalizedHint) score += Math.round(270 * hintReliability);
+    else if (cardName.includes(normalizedHint) || normalizedHint.includes(cardName)) score += Math.round(190 * hintReliability);
+    score += Math.round(similarity(cardName, normalizedHint) * 135 * hintReliability);
+    score += Math.round(tokenOverlap(cardName, normalizedHint) * 65 * hintReliability);
 
-    // Bei Mega-/ex-Logos ist die Mechanik oft grafisch statt als sauberer Text
-    // ausgeführt. Der Basisname („Stalobor“) wird daher separat verglichen.
     if (hintBase && cardBaseName) {
-      if (hintBase === cardBaseName) score += 235;
-      else if (hintBase.includes(cardBaseName) || cardBaseName.includes(hintBase)) score += 155;
-      score += Math.round(similarity(cardBaseName, hintBase) * 105);
+      if (hintBase === cardBaseName) score += Math.round(235 * hintReliability);
+      else if (hintBase.includes(cardBaseName) || cardBaseName.includes(hintBase)) score += Math.round(155 * hintReliability);
+      score += Math.round(similarity(cardBaseName, hintBase) * 110 * hintReliability);
     }
   }
 
@@ -1819,7 +2009,8 @@ function renderResults(cards, parsed) {
   const confidenceText = getConfidenceText(top, margin, parsed);
   const recognizedParts = [];
   if (parsed.nameHints[0]?.value) recognizedParts.push(parsed.nameHints[0].value);
-  if (parsed.identifiers[0]) recognizedParts.push(formatIdentifierForInput(parsed.identifiers[0]));
+  const displayIdentifier = (parsed.identifiers || []).find(item => Number(item.reliability || 0) >= 0.55);
+  if (displayIdentifier) recognizedParts.push(formatIdentifierForInput(displayIdentifier));
 
   els.resultMessage.className = "notice";
   els.resultMessage.textContent = `${confidenceText}${recognizedParts.length ? ` Erkannt wurden: ${recognizedParts.join(" · ")}.` : ""} Vergleiche vor dem Kauf zur Sicherheit Kartenbild und Nummer.`;
@@ -1842,9 +2033,11 @@ function renderResults(cards, parsed) {
 
     const badges = document.createElement("div");
     badges.className = "result-badges";
-    if (index === 0) badges.append(createBadge("Bester Treffer", true));
+    const reliableNumberMatch = getReliableIdentifierMatch(parsed, card, 0.65);
+    const confidentTop = index === 0 && isConfidentTopMatch(card, margin, parsed);
+    if (index === 0) badges.append(createBadge(confidentTop ? "Bester Treffer" : "Ähnlichster Treffer", confidentTop));
     if (card._imageScore !== null && card._imageScore !== undefined) badges.append(createBadge(`Bild ${Math.round(card._imageScore * 100)} %`, card._imageScore >= 0.72));
-    if (parsed.numbers.some(number => collectorNumbersEqual(number, card.localId))) badges.append(createBadge("Nummer passt", true));
+    if (reliableNumberMatch) badges.append(createBadge("Nummer passt", true));
     if (card._dataLanguage && card._dataLanguage !== els.language.value) badges.append(createBadge("engl. Datenbank-Fallback", false));
 
     const meta = document.createElement("p");
@@ -1928,13 +2121,19 @@ function buildCardmarketSearchUrl(query) {
   return `${CARDMARKET_SEARCH}?${params.toString()}`;
 }
 
+function isConfidentTopMatch(top, margin, parsed) {
+  const strongImage = Number(top._imageScore) >= 0.72;
+  const reliableNumber = Boolean(getReliableIdentifierMatch(parsed, top, 0.72));
+  return Boolean(reliableNumber || (strongImage && margin > 35));
+}
+
 function getConfidenceText(top, margin, parsed) {
-  const strongImage = Number(top._imageScore) >= 0.74;
-  const numberMatch = parsed.numbers.some(number => collectorNumbersEqual(number, top.localId));
-  const denominatorMatch = parsed.identifiers[0]?.denominator
-    && Number(top.set?.cardCount?.official || top._setBrief?.cardCount?.official) === Number(parsed.identifiers[0].denominator);
-  if ((strongImage && numberMatch) || (numberMatch && denominatorMatch && margin > 75)) return "Die erste Karte ist sehr wahrscheinlich der richtige Treffer.";
-  if (margin > 55 || strongImage) return "Die erste Karte ist wahrscheinlich der richtige Treffer.";
+  const strongImage = Number(top._imageScore) >= 0.72;
+  const numberMatch = getReliableIdentifierMatch(parsed, top, 0.65);
+  const officialTotal = Number(top.set?.cardCount?.official || top._setBrief?.cardCount?.official || 0);
+  const denominatorMatch = numberMatch?.denominator && officialTotal === Number(numberMatch.denominator);
+  if (numberMatch && denominatorMatch) return "Die erste Karte ist sehr wahrscheinlich der richtige Treffer.";
+  if (numberMatch || (strongImage && margin > 35)) return "Die erste Karte ist wahrscheinlich der richtige Treffer.";
   return "Die Erkennung ist nicht eindeutig; bitte wähle anhand des Kartenbildes.";
 }
 
@@ -1959,6 +2158,7 @@ function formatDebugText(ocr, parsed, selected, aiResult = null) {
     `Schnelltest-Bewertung: ${Math.round(selected.quality)}`,
     `Ermittelter Kartenname: ${name}`,
     `Ermittelte Kennung: ${identifier}`,
+    `Kennungszuverlässigkeit: ${parsed.identifiers[0] ? `${Math.round(Number(parsed.identifiers[0].reliability || 0) * 100)} % (${parsed.identifiers[0].kind || "OCR"})` : "–"}`,
     `Erkannte Mechanik: ${parsed.mechanics?.length ? parsed.mechanics.join(", ") : "keine"}`,
     "",
     "--- OCR-Bereiche ---"
@@ -2370,6 +2570,18 @@ function nameSearchVariants(name, mechanics = []) {
     .sort((a, b) => b.length - a.length)[0];
   if (longestWord?.length >= 4) variants.add(longestWord);
   if (clean.length >= 7) variants.add(clean.slice(0, -1));
+
+  // Bei kleinen weißen Schriften entstehen häufig ein zusätzliches Zeichen am
+  // Anfang oder ein einzelner Buchstabenfehler. Kurze Wortfragmente sorgen
+  // dafür, dass die Datenbank trotzdem passende Namensfamilien liefert; die
+  // endgültige Sortierung übernimmt anschließend der Bildvergleich.
+  const compactLetters = clean.replace(/[^A-Za-zÄÖÜäöüß]/g, "");
+  if (compactLetters.length >= 8) {
+    variants.add(compactLetters.slice(-5));
+    variants.add(compactLetters.slice(-6));
+    variants.add(compactLetters.slice(0, 6));
+  }
+  if (/^[A-Za-z][A-ZÄÖÜ]/.test(clean) && clean.length >= 6) variants.add(clean.slice(1));
 
   if (base && mechanics.includes("mega")) {
     variants.add(`Mega-${base} ex`);
