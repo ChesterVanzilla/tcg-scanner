@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.5";
+const APP_VERSION = "6.5.1";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
@@ -797,7 +797,7 @@ function mergeAiResultIntoParsed(parsed, ai) {
       denominator: denominator || null,
       setCode: setCode || null,
       score: 255 + confidence * 80,
-      reliability: Math.max(0.78, confidence || 0),
+      reliability: Math.max(0.42, Math.min(0.58, confidence || 0.5)),
       kind: "ai",
       source: "KI-Bilderkennung",
       raw: [setCode, number, denominator ? `/${denominator}` : ""].filter(Boolean).join(" ")
@@ -878,6 +878,34 @@ async function analyzePreparedCard() {
       candidates = await findCandidates(parsed, els.language.value);
     }
 
+    if (aiResult && candidates.length) {
+      const consistency = assessAiCandidateConsistency(aiResult, candidates);
+      aiResult._databaseVerified = consistency.verified;
+      aiResult._consistencyReason = consistency.reason;
+
+      if (consistency.conflict) {
+        const rejected = `${aiResult.number || ""}${aiResult.denominator ? `/${aiResult.denominator}` : ""}`;
+        parsed = discardRejectedAiIdentifier(parsed, aiResult);
+        aiResult = {
+          ...aiResult,
+          number: "",
+          denominator: "",
+          setCode: "",
+          confidence: Math.min(0.55, Number(aiResult.confidence || 0.5)),
+          _databaseVerified: false,
+          _numberRejected: true,
+          _rejectedIdentifier: rejected
+        };
+        parsed.ai = aiResult;
+        lastAiDiagnostic = {
+          status: "KI-Nummer verworfen",
+          detail: `${consistency.reason}. Name „${aiResult.name || "–"}“ wird mit OCR und Bildvergleich weiter geprüft.`
+        };
+        setScanState("amber", true, "KI + PRÜFUNG");
+        candidates = await findCandidates(parsed, els.language.value);
+      }
+    }
+
     const needsOcr = !hasStrongAiRecognition(aiResult) || candidates.length === 0;
     if (needsOcr) {
       usedLocalOcr = true;
@@ -903,9 +931,10 @@ Lokale OCR ausgeführt: ${usedLocalOcr ? "ja" : "nein – KI-Ergebnis war ausrei
     els.debugPanel.classList.remove("hidden");
 
     setProgress("Treffer werden sortiert …", 82);
-    const rankingCanvases = hasStrongAiRecognition(aiResult)
-      ? null
-      : (selected.alternatives?.slice(0, 1) || [selected.canvas]);
+    // Auch bei erfolgreicher KI wird das Kartenbild gegengeprüft. Dadurch kann
+    // eine richtige Namenslesung mit einer halluzinierten Nummer nicht mehr
+    // automatisch eine falsche Kartenvariante nach oben ziehen.
+    const rankingCanvases = selected.alternatives?.slice(0, 1) || [selected.canvas];
     const ranked = await rankCandidates(
       candidates,
       parsed,
@@ -957,8 +986,62 @@ function hasStrongAiRecognition(ai) {
   if (!ai || typeof ai !== "object") return false;
   const name = String(ai.name || "").trim();
   const number = normalizeCollectorNumber(ai.number || "");
-  const confidence = Number(ai.confidence || 0);
-  return Boolean(name && number && (confidence >= 0.35 || confidence === 0));
+  return Boolean(name && number && ai._databaseVerified === true && ai._numberRejected !== true);
+}
+
+function cardNameCompatibility(cardName, recognizedName) {
+  const card = normalizeText(stripCardMechanics(cardName || ""));
+  const recognized = normalizeText(stripCardMechanics(recognizedName || ""));
+  if (!card || !recognized) return 0;
+  if (card === recognized) return 1;
+  if (card.includes(recognized) || recognized.includes(card)) return 0.9;
+  return similarity(card, recognized);
+}
+
+function assessAiCandidateConsistency(ai, candidates) {
+  const name = String(ai?.name || "").trim();
+  const number = normalizeCollectorNumber(ai?.number || "");
+  if (!name || !number || !Array.isArray(candidates) || !candidates.length) {
+    return { verified: false, conflict: false, reason: "unvollständige Prüfdaten" };
+  }
+
+  const numberMatches = candidates.filter(card => collectorNumbersEqual(number, card.localId));
+  const nameMatches = candidates
+    .map(card => ({ card, compatibility: cardNameCompatibility(card.name, name) }))
+    .filter(item => item.compatibility >= 0.58);
+  const compatibleNumberMatches = numberMatches
+    .map(card => ({ card, compatibility: cardNameCompatibility(card.name, name) }))
+    .filter(item => item.compatibility >= 0.58);
+
+  if (compatibleNumberMatches.length) {
+    return { verified: true, conflict: false, reason: "Name und Nummer passen zu demselben Datenbankeintrag" };
+  }
+
+  if (nameMatches.length && (numberMatches.length || !numberMatches.length)) {
+    return {
+      verified: false,
+      conflict: true,
+      reason: numberMatches.length
+        ? "Die gelesene Nummer gehört in der Datenbank zu einer anderen Karte"
+        : "Die gelesene Nummer ist für den erkannten Namen nicht auffindbar"
+    };
+  }
+
+  return { verified: false, conflict: false, reason: "Datenbankabgleich nicht eindeutig" };
+}
+
+function discardRejectedAiIdentifier(parsed, ai) {
+  const rejectedNumber = normalizeCollectorNumber(ai?.number || "");
+  const keptIdentifiers = (parsed.identifiers || []).filter(item =>
+    item.source !== "KI-Bilderkennung" && !collectorNumbersEqual(item.number, rejectedNumber)
+  );
+  return {
+    ...parsed,
+    identifiers: keptIdentifiers,
+    numbers: unique(keptIdentifiers.map(item => item.number).filter(Boolean)),
+    denominators: unique(keptIdentifiers.map(item => item.denominator).filter(Boolean)),
+    setCodes: unique(keptIdentifiers.map(item => item.setCode).filter(Boolean))
+  };
 }
 
 function mergeParsedResults(primary, secondary) {
@@ -1899,9 +1982,28 @@ async function enrichTopCandidates(ranked, language) {
       const response = await fetch(`${API_BASE}/${dataLanguage}/cards/${encodeURIComponent(card.id)}`);
       if (!response.ok) return card;
       const full = await response.json();
+      let fallbackImage = full.image || card.image || null;
+
+      // Deutsche Datensätze besitzen bei einzelnen Karten noch kein Bild,
+      // während dasselbe Karten-ID-Bild in der englischen Datenbank vorhanden
+      // sein kann. In diesem Fall wird nur das Bild ergänzt; Name, Preis und
+      // sonstige Daten bleiben aus der gewählten Sprache erhalten.
+      if (!fallbackImage && dataLanguage !== "en") {
+        try {
+          const englishResponse = await fetch(`${API_BASE}/en/cards/${encodeURIComponent(card.id)}`);
+          if (englishResponse.ok) {
+            const englishCard = await englishResponse.json();
+            fallbackImage = englishCard.image || null;
+          }
+        } catch {
+          // Fehlendes englisches Bild ist kein Abbruchgrund.
+        }
+      }
+
       return {
         ...card,
         ...full,
+        image: fallbackImage,
         _dataLanguage: dataLanguage,
         _score: card._score,
         _metaScore: card._metaScore,
@@ -2153,6 +2255,7 @@ function formatDebugText(ocr, parsed, selected, aiResult = null) {
     `KI-Status: ${lastAiDiagnostic.status}`,
     `KI-Details: ${lastAiDiagnostic.detail || "keine"}`,
     `KI-Antwort: ${aiResult ? JSON.stringify(aiResult) : "keine"}`,
+    `KI-Datenbankprüfung: ${aiResult?._databaseVerified ? "bestätigt" : aiResult?._numberRejected ? "Nummer verworfen" : "nicht bestätigt"}`,
     `Verwendeter Bildausschnitt: ${selected.canvasIndex + 1}`,
     `Ausrichtung: ${selected.rotation}°`,
     `Schnelltest-Bewertung: ${Math.round(selected.quality)}`,
