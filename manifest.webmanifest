@@ -1,7 +1,7 @@
 {
   "name": "CardDex AI – Dein persönlicher Card Assistant",
   "short_name": "CardDex AI",
-  "description": "Pokémon-Karten scannen, erkennen und auf Cardmarket öffnen.",
+  "description": "Pokémon-Karten scannen, erkennen und im Retro-CardDex auswerten.",
   "lang": "de-DE",
   "start_url": "./",
   "scope": "./",

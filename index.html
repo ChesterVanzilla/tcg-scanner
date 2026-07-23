@@ -11,17 +11,51 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=651" />
+  <link rel="stylesheet" href="styles.css?v=660" />
+  <script>
+    try {
+      if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
+        document.documentElement.classList.add("boot-disabled");
+      }
+    } catch {}
+  </script>
   <title>CardDex AI</title>
 </head>
 <body>
+  <div id="bootScreen" class="boot-screen" aria-label="CardDex AI wird gestartet">
+    <button id="skipBootButton" class="boot-skip" type="button">Überspringen</button>
+    <div class="boot-device" aria-hidden="true">
+      <div class="boot-lens"><i></i></div>
+      <div class="boot-led-row"><i></i><i></i><i></i></div>
+      <div class="boot-display">
+        <div class="boot-scanline"></div>
+        <img src="icons/icon-192.png" alt="" />
+        <p class="boot-title">CARDEX AI</p>
+        <div class="boot-log" aria-hidden="true">
+          <span id="bootLine1">CARDEX SYSTEM v6.6</span>
+          <span id="bootLine2">INITIALIZING MODULES…</span>
+          <span id="bootLine3">CAMERA: CHECKING</span>
+          <span id="bootLine4">AI LINK: CHECKING</span>
+        </div>
+        <div class="boot-progress"><i id="bootProgressBar"></i></div>
+        <strong id="bootReadyText">SYSTEM START</strong>
+      </div>
+      <div class="boot-controls"><span></span><span></span><span></span></div>
+    </div>
+  </div>
+
   <div class="background-grid" aria-hidden="true"></div>
 
-  <div class="app-shell">
+  <div id="appShell" class="app-shell">
     <header class="app-header">
-      <div class="system-line" aria-hidden="true">
+      <div class="system-line">
         <span>CARDEX SYSTEM</span>
-        <span class="system-status"><i id="systemStatusLed" class="status-light state-off"></i><strong id="systemStatusText">KI AUS</strong></span>
+        <div class="header-tools">
+          <span class="system-status" aria-live="polite"><i id="systemStatusLed" class="status-light state-off"></i><strong id="systemStatusText">KI AUS</strong></span>
+          <button id="openSettingsButton" class="settings-button" type="button" aria-label="Einstellungen öffnen" aria-controls="settingsDrawer" aria-expanded="false">
+            <span class="gear-symbol" aria-hidden="true"></span>
+          </button>
+        </div>
       </div>
 
       <div class="brand-row">
@@ -52,7 +86,7 @@
 
         <div class="tip-box">
           <span class="pixel-icon scan-icon" aria-hidden="true"></span>
-          <p>Richte die Karte möglichst gerade aus. Bei glänzenden Karten helfen gleichmäßiges Licht und wenig Reflexionen.</p>
+          <p id="scanTipText">Richte die Karte möglichst gerade aus. Bei glänzenden Karten helfen gleichmäßiges Licht und wenig Reflexionen.</p>
           <i class="tip-led" aria-hidden="true"></i>
         </div>
 
@@ -62,6 +96,11 @@
             <option value="de" selected>Deutsch</option>
             <option value="en">Englisch</option>
           </select>
+        </div>
+
+        <div id="activeModeChips" class="mode-chips" aria-live="polite">
+          <span id="cameraMemoryChip" class="mode-chip hidden">KAMERA GESPEICHERT</span>
+          <span id="sleeveModeChip" class="mode-chip mode-chip-amber hidden">SCHUTZHÜLLE</span>
         </div>
 
         <div class="scan-console">
@@ -135,30 +174,6 @@
         <div id="results" class="card-results"></div>
       </section>
 
-      <section id="aiPanel" class="panel ai-panel">
-        <details>
-          <summary>
-            <span>KI-Verbindung</span>
-            <span class="summary-status"><i id="aiSummaryLed" class="status-light state-off"></i> <span id="aiSummaryText">Nicht verbunden</span></span>
-          </summary>
-          <div class="ai-content">
-            <p>Die KI liest Kartenname, Nummer und Set. Die lokale Erkennung bleibt als Rückfallebene aktiv.</p>
-            <div class="form-grid">
-              <label>
-                Worker-Adresse
-                <input id="aiEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="https://carddex-ai….workers.dev" />
-              </label>
-              <label>
-                Privater Schlüssel
-                <input id="aiSecret" type="password" autocomplete="off" placeholder="SCANNER_KEY" />
-              </label>
-            </div>
-            <button id="saveAiSettingsButton" class="secondary-button wide-button" type="button">KI-Verbindung speichern</button>
-            <p id="aiStatus" class="ai-status muted">Verbindung wird geprüft.</p>
-          </div>
-        </details>
-      </section>
-
       <section id="manualPanel" class="panel manual-panel">
         <details>
           <summary>Karte manuell suchen</summary>
@@ -178,19 +193,12 @@
           </div>
         </details>
       </section>
-
-      <section id="debugPanel" class="panel debug-panel hidden">
-        <details>
-          <summary>Erkennungsdetails anzeigen</summary>
-          <pre id="ocrText"></pre>
-        </details>
-      </section>
     </main>
 
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span>PERSONAL CARD ASSISTANT · v6.5</span>
+        <span>PERSONAL CARD ASSISTANT · v6.6</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -201,11 +209,153 @@
     </footer>
   </div>
 
+  <div id="settingsBackdrop" class="settings-backdrop" aria-hidden="true"></div>
+  <aside id="settingsDrawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
+    <div class="settings-hardware-top" aria-hidden="true">
+      <div class="settings-lens"></div>
+      <div class="settings-led-strip"><i></i><i></i><i></i></div>
+      <div class="settings-speaker"></div>
+    </div>
+
+    <div class="settings-topbar">
+      <button id="closeSettingsButton" class="drawer-back-button" type="button" aria-label="Einstellungen schließen"><span aria-hidden="true">‹</span></button>
+      <div>
+        <p>SYSTEMMENÜ</p>
+        <h2 id="settingsTitle">Einstellungen</h2>
+      </div>
+      <span class="drawer-online"><i class="status-light state-green"></i> ONLINE</span>
+    </div>
+
+    <div class="settings-scroll">
+      <section class="settings-section">
+        <div class="settings-section-title"><span>01</span><h3>Allgemein</h3></div>
+
+        <label class="setting-row" for="settingsLanguage">
+          <span><strong>Kartensprache</strong><small>Standard für Scanner und Suche</small></span>
+          <select id="settingsLanguage">
+            <option value="de">Deutsch</option>
+            <option value="en">Englisch</option>
+          </select>
+        </label>
+
+        <label class="setting-row" for="resultCountSetting">
+          <span><strong>Angezeigte Treffer</strong><small>Anzahl der Ergebniskarten</small></span>
+          <select id="resultCountSetting">
+            <option value="3">3</option>
+            <option value="5">5</option>
+            <option value="8">8</option>
+          </select>
+        </label>
+
+        <label class="setting-row toggle-row" for="bootAnimationToggle">
+          <span><strong>Startanimation</strong><small>Pokédex-Systemstart anzeigen</small></span>
+          <span class="retro-toggle"><input id="bootAnimationToggle" type="checkbox" /><i></i></span>
+        </label>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section-title"><span>02</span><h3>Kamera & Scanner</h3></div>
+
+        <label class="setting-row toggle-row" for="rememberCameraToggle">
+          <span><strong>Kamerawahl merken</strong><small>Zuletzt verwendete Rückkamera wiederverwenden</small></span>
+          <span class="retro-toggle"><input id="rememberCameraToggle" type="checkbox" /><i></i></span>
+        </label>
+
+        <label class="setting-row toggle-row" for="sleeveModeToggle">
+          <span><strong>Schutzhüllen-Modus</strong><small>Zusätzlicher Ausschnitt für Sleeve und Toploader</small></span>
+          <span class="retro-toggle"><input id="sleeveModeToggle" type="checkbox" /><i></i></span>
+        </label>
+
+        <div class="setting-row setting-info-row">
+          <span><strong>Bevorzugte Kamera</strong><small id="preferredCameraText">Automatische Rückkamera</small></span>
+          <button id="forgetCameraButton" class="mini-system-button" type="button">Zurücksetzen</button>
+        </div>
+
+        <div class="system-note">
+          <i class="status-light state-amber"></i>
+          <p>Der Kamera-Umschalter erscheint im Live-Scanner, sobald das Gerät mehrere auswählbare Rückkameras bereitstellt.</p>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section-title"><span>03</span><h3>Erkennung</h3></div>
+
+        <div class="system-module-list" aria-label="Aktive Erkennungsmodule">
+          <div><span><i class="status-light state-green"></i> Automatischer Modus</span><strong>AKTIV</strong></div>
+          <div><span><i class="status-light state-green"></i> Vintage & Galerie</span><strong>AKTIV</strong></div>
+          <div><span><i class="status-light state-green"></i> Lokale OCR-Rückfallebene</span><strong>AKTIV</strong></div>
+          <div><span><i class="status-light state-green"></i> Bildvergleich</span><strong>AKTIV</strong></div>
+        </div>
+
+        <label class="setting-row toggle-row" for="debugToggle">
+          <span><strong>Diagnosemodus</strong><small>Erkennungsdetails nach einem Scan anzeigen</small></span>
+          <span class="retro-toggle"><input id="debugToggle" type="checkbox" /><i></i></span>
+        </label>
+      </section>
+
+      <section id="aiPanel" class="settings-section ai-panel">
+        <div class="settings-section-title"><span>04</span><h3>KI-Verbindung</h3></div>
+        <div class="settings-ai-status">
+          <span class="summary-status"><i id="aiSummaryLed" class="status-light state-off"></i> <span id="aiSummaryText">Nicht verbunden</span></span>
+        </div>
+        <div class="ai-content drawer-ai-content">
+          <p>Die KI liest Kartenname, Nummer und Set. Die lokale Erkennung bleibt als Rückfallebene aktiv.</p>
+          <div class="form-grid">
+            <label>
+              Worker-Adresse
+              <input id="aiEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="https://carddex-ai….workers.dev" />
+            </label>
+            <label>
+              Privater Schlüssel
+              <input id="aiSecret" type="password" autocomplete="off" placeholder="SCANNER_KEY" />
+            </label>
+          </div>
+          <button id="saveAiSettingsButton" class="secondary-button wide-button" type="button">Verbindung speichern & testen</button>
+          <p id="aiStatus" class="ai-status muted">Verbindung wird geprüft.</p>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
+
+        <div class="system-info-grid">
+          <div><span>APP</span><strong>v6.6</strong></div>
+          <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
+          <div><span>DATENBANK</span><strong>TCGdex</strong></div>
+          <div><span>SPEICHER</span><strong>lokal</strong></div>
+        </div>
+
+        <div class="maintenance-actions">
+          <button id="clearCacheButton" class="mini-system-button wide-button" type="button">App-Cache leeren</button>
+          <button id="resetSettingsButton" class="mini-system-button danger-button wide-button" type="button">App-Einstellungen zurücksetzen</button>
+        </div>
+        <p id="maintenanceStatus" class="maintenance-status" aria-live="polite"></p>
+      </section>
+
+      <section id="debugPanel" class="settings-section debug-panel hidden">
+        <div class="settings-section-title"><span>06</span><h3>Erkennungsdetails</h3></div>
+        <pre id="ocrText">Noch keine Erkennung ausgeführt.</pre>
+      </section>
+    </div>
+
+    <div class="settings-bottom-controls" aria-hidden="true">
+      <span class="drawer-dpad"></span>
+      <span class="drawer-button red"></span>
+      <span class="drawer-button dark"></span>
+    </div>
+  </aside>
+
   <div id="scannerModal" class="scanner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="scannerTitle">
     <div class="scanner-topbar">
       <button id="closeScannerButton" class="scanner-text-button" type="button">Abbrechen</button>
-      <strong id="scannerTitle">Karte ausrichten</strong>
-      <span class="live-led" aria-hidden="true"></span>
+      <div class="scanner-title-group">
+        <strong id="scannerTitle">Karte ausrichten</strong>
+        <span id="activeCameraLabel">Rückkamera</span>
+      </div>
+      <button id="switchCameraButton" class="camera-switch-button hidden" type="button" aria-label="Zur nächsten Kamera wechseln">
+        <span aria-hidden="true">↻</span>
+        <small>Kamera</small>
+      </button>
     </div>
     <div id="cameraViewport" class="camera-viewport">
       <video id="cameraVideo" playsinline muted></video>
@@ -220,6 +370,7 @@
       <div class="camera-shade shade-bottom"></div>
       <div class="camera-shade shade-left"></div>
       <div class="camera-shade shade-right"></div>
+      <div id="cameraModeBadge" class="camera-mode-badge hidden">SCHUTZHÜLLE</div>
     </div>
     <div class="scanner-controls">
       <p id="cameraStatus">Karte vollständig in den Rahmen legen.</p>
@@ -230,6 +381,6 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="app.js?v=651" defer></script>
+  <script src="app.js?v=660" defer></script>
 </body>
 </html>

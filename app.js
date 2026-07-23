@@ -3,12 +3,22 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.5.1";
+const APP_VERSION = "6.6";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
 const CARD_HEIGHT = 1050;
 const MAX_RESULTS = 8;
+const SETTING_PREFIX = "carddex-v66-";
+const SETTING_KEYS = {
+  bootAnimation: `${SETTING_PREFIX}boot-animation`,
+  rememberCamera: `${SETTING_PREFIX}remember-camera`,
+  preferredCamera: `${SETTING_PREFIX}preferred-camera`,
+  sleeveMode: `${SETTING_PREFIX}sleeve-mode`,
+  debugMode: `${SETTING_PREFIX}debug-mode`,
+  resultCount: `${SETTING_PREFIX}result-count`,
+  language: `${SETTING_PREFIX}language`
+};
 const MAX_IMAGE_CANDIDATES = 24;
 const MAX_PREPARED_CANVASES = 2;
 const GALLERY_MAX_DIMENSION = 1280;
@@ -63,7 +73,36 @@ const els = {
   aiSummaryText: document.querySelector("#aiSummaryText"),
   footerPowerLed: document.querySelector("#footerPowerLed"),
   footerAiLed: document.querySelector("#footerAiLed"),
-  footerSyncLed: document.querySelector("#footerSyncLed")
+  footerSyncLed: document.querySelector("#footerSyncLed"),
+  appShell: document.querySelector("#appShell"),
+  bootScreen: document.querySelector("#bootScreen"),
+  skipBootButton: document.querySelector("#skipBootButton"),
+  bootProgressBar: document.querySelector("#bootProgressBar"),
+  bootReadyText: document.querySelector("#bootReadyText"),
+  bootLine3: document.querySelector("#bootLine3"),
+  bootLine4: document.querySelector("#bootLine4"),
+  openSettingsButton: document.querySelector("#openSettingsButton"),
+  closeSettingsButton: document.querySelector("#closeSettingsButton"),
+  settingsDrawer: document.querySelector("#settingsDrawer"),
+  settingsBackdrop: document.querySelector("#settingsBackdrop"),
+  settingsLanguage: document.querySelector("#settingsLanguage"),
+  resultCountSetting: document.querySelector("#resultCountSetting"),
+  bootAnimationToggle: document.querySelector("#bootAnimationToggle"),
+  rememberCameraToggle: document.querySelector("#rememberCameraToggle"),
+  sleeveModeToggle: document.querySelector("#sleeveModeToggle"),
+  debugToggle: document.querySelector("#debugToggle"),
+  preferredCameraText: document.querySelector("#preferredCameraText"),
+  forgetCameraButton: document.querySelector("#forgetCameraButton"),
+  clearCacheButton: document.querySelector("#clearCacheButton"),
+  resetSettingsButton: document.querySelector("#resetSettingsButton"),
+  maintenanceStatus: document.querySelector("#maintenanceStatus"),
+  workerVersionText: document.querySelector("#workerVersionText"),
+  switchCameraButton: document.querySelector("#switchCameraButton"),
+  activeCameraLabel: document.querySelector("#activeCameraLabel"),
+  cameraModeBadge: document.querySelector("#cameraModeBadge"),
+  sleeveModeChip: document.querySelector("#sleeveModeChip"),
+  cameraMemoryChip: document.querySelector("#cameraMemoryChip"),
+  scanTipText: document.querySelector("#scanTipText")
 };
 
 let preparedCanvases = [];
@@ -76,6 +115,13 @@ let lastParsed = null;
 let lastAiDiagnostic = { status: "Noch nicht ausgeführt", detail: "" };
 let imagePreparationToken = 0;
 let isAnalyzing = false;
+let rearCameras = [];
+let activeCameraId = "";
+let activeCameraLabel = "Rückkamera";
+let cameraSwitchInProgress = false;
+let settingsReturnFocus = null;
+let drawerTouchStartX = null;
+let bootTimeouts = [];
 
 const LED_CLASS_NAMES = ["state-off", "state-green", "state-red", "state-amber", "pulse"];
 
@@ -140,20 +186,340 @@ function setSyncErrorState() {
   setSyncState("red", false);
 }
 
+function readBooleanSetting(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    if (value === null) return fallback;
+    return value === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function writeBooleanSetting(key, value) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // Private Browsermodi können lokalen Speicher begrenzen.
+  }
+}
+
+function readTextSetting(key, fallback = "") {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeTextSetting(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Die App bleibt ohne dauerhafte Speicherung nutzbar.
+  }
+}
+
+function isBootAnimationEnabled() {
+  return readBooleanSetting(SETTING_KEYS.bootAnimation, true);
+}
+
+function isRememberCameraEnabled() {
+  return readBooleanSetting(SETTING_KEYS.rememberCamera, true);
+}
+
+function isSleeveModeEnabled() {
+  return readBooleanSetting(SETTING_KEYS.sleeveMode, false);
+}
+
+function isDebugModeEnabled() {
+  return readBooleanSetting(SETTING_KEYS.debugMode, false);
+}
+
+function getResultLimit() {
+  const value = Number(readTextSetting(SETTING_KEYS.resultCount, "5"));
+  return [3, 5, 8].includes(value) ? value : 5;
+}
+
+function loadAppSettings() {
+  const savedLanguage = readTextSetting(SETTING_KEYS.language, "de");
+  const language = savedLanguage === "en" ? "en" : "de";
+  if (els.language) els.language.value = language;
+  if (els.settingsLanguage) els.settingsLanguage.value = language;
+  if (els.resultCountSetting) els.resultCountSetting.value = String(getResultLimit());
+  if (els.bootAnimationToggle) els.bootAnimationToggle.checked = isBootAnimationEnabled();
+  if (els.rememberCameraToggle) els.rememberCameraToggle.checked = isRememberCameraEnabled();
+  if (els.sleeveModeToggle) els.sleeveModeToggle.checked = isSleeveModeEnabled();
+  if (els.debugToggle) els.debugToggle.checked = isDebugModeEnabled();
+  updateModeIndicators();
+  updatePreferredCameraText();
+  updateDebugPanelVisibility(false);
+}
+
+function handleMainLanguageChange() {
+  const language = els.language.value === "en" ? "en" : "de";
+  writeTextSetting(SETTING_KEYS.language, language);
+  if (els.settingsLanguage) els.settingsLanguage.value = language;
+  clearResults();
+}
+
+function handleSettingsLanguageChange() {
+  const language = els.settingsLanguage.value === "en" ? "en" : "de";
+  writeTextSetting(SETTING_KEYS.language, language);
+  if (els.language) els.language.value = language;
+  clearResults();
+}
+
+function handleResultCountChange() {
+  const value = ["3", "5", "8"].includes(els.resultCountSetting.value)
+    ? els.resultCountSetting.value
+    : "5";
+  writeTextSetting(SETTING_KEYS.resultCount, value);
+}
+
+function handleBootAnimationChange() {
+  writeBooleanSetting(SETTING_KEYS.bootAnimation, Boolean(els.bootAnimationToggle.checked));
+}
+
+function handleRememberCameraChange() {
+  const enabled = Boolean(els.rememberCameraToggle.checked);
+  writeBooleanSetting(SETTING_KEYS.rememberCamera, enabled);
+  if (!enabled) {
+    try { localStorage.removeItem(SETTING_KEYS.preferredCamera); } catch { /* ignorieren */ }
+  } else if (activeCameraId) {
+    writeTextSetting(SETTING_KEYS.preferredCamera, activeCameraId);
+  }
+  updateModeIndicators();
+  updatePreferredCameraText();
+}
+
+function handleSleeveModeChange() {
+  writeBooleanSetting(SETTING_KEYS.sleeveMode, Boolean(els.sleeveModeToggle.checked));
+  updateModeIndicators();
+  updateScannerModeUi();
+}
+
+function handleDebugModeChange() {
+  writeBooleanSetting(SETTING_KEYS.debugMode, Boolean(els.debugToggle.checked));
+  updateDebugPanelVisibility(true);
+}
+
+function updateModeIndicators() {
+  const sleeve = isSleeveModeEnabled();
+  const rememberedCamera = isRememberCameraEnabled() && Boolean(readTextSetting(SETTING_KEYS.preferredCamera, ""));
+  els.sleeveModeChip?.classList.toggle("hidden", !sleeve);
+  els.cameraMemoryChip?.classList.toggle("hidden", !rememberedCamera);
+  if (els.scanTipText) {
+    els.scanTipText.textContent = sleeve
+      ? "Schutzhüllen-Modus aktiv: Karte und Hülle vollständig im Rahmen halten und Reflexionen leicht seitlich ausrichten."
+      : "Richte die Karte möglichst gerade aus. Bei glänzenden Karten helfen gleichmäßiges Licht und wenig Reflexionen.";
+  }
+}
+
+function updateDebugPanelVisibility(hasNewData = false) {
+  if (!els.debugPanel) return;
+  const hasData = hasNewData || Boolean(els.ocrText?.textContent?.trim())
+    && !els.ocrText.textContent.includes("Noch keine Erkennung");
+  els.debugPanel.classList.toggle("hidden", !(isDebugModeEnabled() && hasData));
+}
+
+function initializeBootSequence() {
+  if (!els.bootScreen) return;
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (!isBootAnimationEnabled() || reduceMotion) {
+    finishBootSequence();
+    return;
+  }
+
+  document.body.classList.add("modal-open");
+  if (els.bootLine3) els.bootLine3.textContent = navigator.mediaDevices?.getUserMedia ? "CAMERA: READY" : "CAMERA: FALLBACK";
+  if (els.bootLine4) els.bootLine4.textContent = getAiEndpoint() ? "AI LINK: CONFIGURED" : "AI LINK: LOCAL MODE";
+
+  const steps = [
+    [180, 14, "POWER CHECK"],
+    [440, 36, "CAMERA MODULE"],
+    [720, 61, "VISION MODULE"],
+    [1010, 82, "DATABASE LINK"],
+    [1280, 100, "SYSTEM READY"]
+  ];
+  for (const [delay, progress, label] of steps) {
+    bootTimeouts.push(setTimeout(() => {
+      if (els.bootProgressBar) els.bootProgressBar.style.width = `${progress}%`;
+      if (els.bootReadyText) els.bootReadyText.textContent = label;
+    }, delay));
+  }
+  bootTimeouts.push(setTimeout(finishBootSequence, 1680));
+}
+
+function finishBootSequence() {
+  for (const timeout of bootTimeouts) clearTimeout(timeout);
+  bootTimeouts = [];
+  if (!els.bootScreen || els.bootScreen.classList.contains("boot-hidden")) return;
+  if (els.bootProgressBar) els.bootProgressBar.style.width = "100%";
+  if (els.bootReadyText) els.bootReadyText.textContent = "SYSTEM READY";
+  els.bootScreen.classList.add("boot-hidden");
+  document.documentElement.classList.remove("boot-disabled");
+  document.body.classList.remove("modal-open");
+  setTimeout(() => {
+    if (els.bootScreen) els.bootScreen.setAttribute("aria-hidden", "true");
+  }, 380);
+}
+
+function openSettingsDrawer() {
+  if (!els.settingsDrawer || els.settingsDrawer.classList.contains("open")) return;
+  settingsReturnFocus = document.activeElement;
+  loadAppSettings();
+  els.settingsDrawer.classList.add("open");
+  els.settingsBackdrop?.classList.add("open");
+  els.settingsDrawer.setAttribute("aria-hidden", "false");
+  els.openSettingsButton?.setAttribute("aria-expanded", "true");
+  document.body.classList.add("drawer-open");
+  refreshWorkerVersionSilently();
+  setTimeout(() => els.closeSettingsButton?.focus({ preventScroll: true }), 180);
+}
+
+function closeSettingsDrawer() {
+  if (!els.settingsDrawer?.classList.contains("open")) return;
+  els.settingsDrawer.classList.remove("open");
+  els.settingsBackdrop?.classList.remove("open");
+  els.settingsDrawer.setAttribute("aria-hidden", "true");
+  els.openSettingsButton?.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("drawer-open");
+  settingsReturnFocus?.focus?.({ preventScroll: true });
+  settingsReturnFocus = null;
+}
+
+function handleGlobalKeydown(event) {
+  if (event.key !== "Escape") return;
+  if (els.settingsDrawer?.classList.contains("open")) {
+    closeSettingsDrawer();
+  } else if (!els.scannerModal?.classList.contains("hidden")) {
+    closeLiveScanner();
+  }
+}
+
+function handleDrawerTouchStart(event) {
+  drawerTouchStartX = event.changedTouches?.[0]?.clientX ?? null;
+}
+
+function handleDrawerTouchEnd(event) {
+  if (drawerTouchStartX === null) return;
+  const endX = event.changedTouches?.[0]?.clientX ?? drawerTouchStartX;
+  const distance = endX - drawerTouchStartX;
+  drawerTouchStartX = null;
+  if (distance > 72) closeSettingsDrawer();
+}
+
+function updatePreferredCameraText() {
+  if (!els.preferredCameraText) return;
+  const saved = readTextSetting(SETTING_KEYS.preferredCamera, "");
+  if (!isRememberCameraEnabled() || !saved) {
+    els.preferredCameraText.textContent = "Automatische Rückkamera";
+    return;
+  }
+  const camera = rearCameras.find(item => item.deviceId === saved);
+  els.preferredCameraText.textContent = camera
+    ? formatCameraLabel(camera, rearCameras.indexOf(camera))
+    : "Gespeicherte Rückkamera";
+}
+
+function forgetPreferredCamera() {
+  try { localStorage.removeItem(SETTING_KEYS.preferredCamera); } catch { /* ignorieren */ }
+  updatePreferredCameraText();
+  updateModeIndicators();
+  showMaintenanceStatus("Gespeicherte Kamerawahl wurde entfernt.");
+}
+
+async function clearApplicationCache() {
+  if (!els.clearCacheButton) return;
+  els.clearCacheButton.disabled = true;
+  showMaintenanceStatus("App-Cache wird geleert …");
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    }
+    const registrations = "serviceWorker" in navigator
+      ? await navigator.serviceWorker.getRegistrations()
+      : [];
+    await Promise.all(registrations.map(registration => registration.update().catch(() => {})));
+    showMaintenanceStatus("Cache geleert. Beim nächsten Laden werden alle Dateien neu abgerufen.", true);
+  } catch (error) {
+    console.error(error);
+    showMaintenanceStatus("Der Cache konnte nicht vollständig geleert werden.", false, true);
+  } finally {
+    els.clearCacheButton.disabled = false;
+  }
+}
+
+function resetApplicationSettings() {
+  const confirmed = window.confirm("Startanimation, Kamera-, Scanner- und Anzeigeeinstellungen zurücksetzen? Die KI-Verbindung bleibt erhalten.");
+  if (!confirmed) return;
+  for (const key of Object.values(SETTING_KEYS)) {
+    try { localStorage.removeItem(key); } catch { /* ignorieren */ }
+  }
+  loadAppSettings();
+  showMaintenanceStatus("Bedienungseinstellungen wurden zurückgesetzt. Die KI-Verbindung wurde beibehalten.", true);
+}
+
+function showMaintenanceStatus(message, success = false, error = false) {
+  if (!els.maintenanceStatus) return;
+  els.maintenanceStatus.textContent = message;
+  els.maintenanceStatus.style.color = error ? "#ffc2be" : success ? "#a9e2ac" : "#b5bcb5";
+}
+
+async function refreshWorkerVersionSilently() {
+  const endpoint = getAiEndpoint();
+  if (!els.workerVersionText) return;
+  if (!endpoint) {
+    els.workerVersionText.textContent = "nicht verbunden";
+    return;
+  }
+  try {
+    const response = await fetch(`${endpoint}/health`, { cache: "no-store" });
+    const data = response.ok ? await response.json() : null;
+    els.workerVersionText.textContent = data?.version ? String(data.version) : `Status ${response.status}`;
+  } catch {
+    els.workerVersionText.textContent = "nicht erreichbar";
+  }
+}
+
+loadAppSettings();
 loadAiSettings();
 refreshStatusFromSettings();
+initializeBootSequence();
 
 els.openScannerButton.addEventListener("click", openLiveScanner);
 els.closeScannerButton.addEventListener("click", closeLiveScanner);
 els.captureButton.addEventListener("click", captureLiveCard);
+els.switchCameraButton?.addEventListener("click", switchToNextCamera);
 els.cameraInput.addEventListener("change", handleImageSelection);
 els.galleryInput.addEventListener("change", handleImageSelection);
 els.analyzeButton.addEventListener("click", analyzePreparedCard);
 els.manualSearchButton.addEventListener("click", manualSearch);
-els.language.addEventListener("change", clearResults);
+els.language.addEventListener("change", handleMainLanguageChange);
+els.settingsLanguage?.addEventListener("change", handleSettingsLanguageChange);
+els.resultCountSetting?.addEventListener("change", handleResultCountChange);
+els.bootAnimationToggle?.addEventListener("change", handleBootAnimationChange);
+els.rememberCameraToggle?.addEventListener("change", handleRememberCameraChange);
+els.sleeveModeToggle?.addEventListener("change", handleSleeveModeChange);
+els.debugToggle?.addEventListener("change", handleDebugModeChange);
+els.openSettingsButton?.addEventListener("click", openSettingsDrawer);
+els.closeSettingsButton?.addEventListener("click", closeSettingsDrawer);
+els.settingsBackdrop?.addEventListener("click", closeSettingsDrawer);
+els.forgetCameraButton?.addEventListener("click", forgetPreferredCamera);
+els.clearCacheButton?.addEventListener("click", clearApplicationCache);
+els.resetSettingsButton?.addEventListener("click", resetApplicationSettings);
+els.skipBootButton?.addEventListener("click", finishBootSequence);
+els.bootScreen?.addEventListener("click", finishBootSequence);
 els.saveAiSettingsButton?.addEventListener("click", saveAiSettings);
+els.settingsDrawer?.addEventListener("touchstart", handleDrawerTouchStart, { passive: true });
+els.settingsDrawer?.addEventListener("touchend", handleDrawerTouchEnd, { passive: true });
 window.addEventListener("resize", updateScannerShades);
+document.addEventListener("keydown", handleGlobalKeydown);
+navigator.mediaDevices?.addEventListener?.("devicechange", handleCameraDeviceChange);
 window.addEventListener("pagehide", () => {
+  finishBootSequence();
   stopCameraStream();
   terminateOcrWorker();
   releasePreparedCanvases();
@@ -184,25 +550,23 @@ async function openLiveScanner() {
     return;
   }
 
+  closeSettingsDrawer();
   els.scannerModal.classList.remove("hidden");
-  document.body.style.overflow = "hidden";
+  document.body.classList.add("modal-open");
   els.captureButton.disabled = true;
   els.cameraStatus.textContent = "Kamera wird gestartet …";
+  updateScannerModeUi();
+
+  const preferredCamera = isRememberCameraEnabled()
+    ? readTextSetting(SETTING_KEYS.preferredCamera, "")
+    : "";
 
   try {
-    stopCameraStream();
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 2560 }
-      }
-    });
-    els.cameraVideo.srcObject = cameraStream;
-    await els.cameraVideo.play();
+    await startCamera(preferredCamera, true);
     els.captureButton.disabled = false;
-    els.cameraStatus.textContent = "Karte vollständig in den Rahmen legen.";
+    els.cameraStatus.textContent = isSleeveModeEnabled()
+      ? "Hülle vollständig ausrichten und Spiegelungen leicht seitlich halten."
+      : "Karte vollständig in den Rahmen legen.";
     requestAnimationFrame(updateScannerShades);
   } catch (error) {
     console.error(error);
@@ -211,10 +575,59 @@ async function openLiveScanner() {
   }
 }
 
+async function startCamera(deviceId = "", allowFallback = true) {
+  if (cameraSwitchInProgress) return;
+  cameraSwitchInProgress = true;
+  els.switchCameraButton?.setAttribute("disabled", "");
+  els.captureButton.disabled = true;
+
+  try {
+    stopCameraStream();
+    const baseVideo = {
+      width: { ideal: 1920 },
+      height: { ideal: 2560 }
+    };
+    const requestedVideo = deviceId
+      ? { ...baseVideo, deviceId: { exact: deviceId } }
+      : { ...baseVideo, facingMode: { ideal: "environment" } };
+
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: requestedVideo });
+    } catch (error) {
+      if (!deviceId || !allowFallback) throw error;
+      try { localStorage.removeItem(SETTING_KEYS.preferredCamera); } catch { /* ignorieren */ }
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { ...baseVideo, facingMode: { ideal: "environment" } }
+      });
+    }
+
+    els.cameraVideo.srcObject = cameraStream;
+    await els.cameraVideo.play();
+    const track = cameraStream.getVideoTracks()[0];
+    const settings = track?.getSettings?.() || {};
+    activeCameraId = settings.deviceId || deviceId || "";
+
+    await refreshRearCameraList();
+    updateActiveCameraLabel();
+
+    if (isRememberCameraEnabled() && activeCameraId) {
+      writeTextSetting(SETTING_KEYS.preferredCamera, activeCameraId);
+    }
+    updateModeIndicators();
+    updatePreferredCameraText();
+    requestAnimationFrame(updateScannerShades);
+  } finally {
+    cameraSwitchInProgress = false;
+    els.switchCameraButton?.removeAttribute("disabled");
+    if (cameraStream) els.captureButton.disabled = false;
+  }
+}
+
 function closeLiveScanner() {
   stopCameraStream();
   els.scannerModal.classList.add("hidden");
-  document.body.style.overflow = "";
+  document.body.classList.remove("modal-open");
 }
 
 function stopCameraStream() {
@@ -222,7 +635,101 @@ function stopCameraStream() {
     for (const track of cameraStream.getTracks()) track.stop();
   }
   cameraStream = null;
-  if (els.cameraVideo.srcObject) els.cameraVideo.srcObject = null;
+  if (els.cameraVideo?.srcObject) els.cameraVideo.srcObject = null;
+}
+
+async function refreshRearCameraList() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    rearCameras = [];
+    updateCameraSwitcherVisibility();
+    return;
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter(device => device.kind === "videoinput" && device.deviceId);
+    const frontPattern = /(front|user|facetime|vorder|frontal|avant|selfie)/i;
+    const nonFront = videoInputs.filter(device => !frontPattern.test(device.label || ""));
+    rearCameras = dedupeCameraDevices(nonFront.length ? nonFront : videoInputs);
+
+    if (activeCameraId && !rearCameras.some(device => device.deviceId === activeCameraId)) {
+      const activeDevice = videoInputs.find(device => device.deviceId === activeCameraId);
+      if (activeDevice) rearCameras.unshift(activeDevice);
+    }
+    updateCameraSwitcherVisibility();
+  } catch (error) {
+    console.warn("Kameraliste konnte nicht gelesen werden:", error);
+    rearCameras = [];
+    updateCameraSwitcherVisibility();
+  }
+}
+
+function dedupeCameraDevices(devices) {
+  const seen = new Set();
+  return devices.filter(device => {
+    if (!device.deviceId || seen.has(device.deviceId)) return false;
+    seen.add(device.deviceId);
+    return true;
+  });
+}
+
+function formatCameraLabel(device, index = 0) {
+  const label = String(device?.label || "").trim();
+  const normalized = label.toLowerCase();
+  if (/ultra|0[,.]5|ultraweit/.test(normalized)) return "0,5× Ultraweitwinkel";
+  if (/tele|telephoto/.test(normalized)) return "Telekamera";
+  if (/dual|triple|multi/.test(normalized)) return "Automatische Rückkamera";
+  if (/wide|back|rear|rück|hinten|environment/.test(normalized)) return "1× Rückkamera";
+  return label || `Rückkamera ${index + 1}`;
+}
+
+function updateActiveCameraLabel() {
+  const index = Math.max(0, rearCameras.findIndex(device => device.deviceId === activeCameraId));
+  const device = rearCameras[index];
+  activeCameraLabel = device ? formatCameraLabel(device, index) : "Rückkamera";
+  if (els.activeCameraLabel) els.activeCameraLabel.textContent = activeCameraLabel;
+}
+
+function updateCameraSwitcherVisibility() {
+  const show = rearCameras.length > 1;
+  els.switchCameraButton?.classList.toggle("hidden", !show);
+  updateActiveCameraLabel();
+}
+
+async function switchToNextCamera() {
+  if (cameraSwitchInProgress || rearCameras.length < 2) return;
+  const currentIndex = rearCameras.findIndex(device => device.deviceId === activeCameraId);
+  const nextIndex = (currentIndex + 1 + rearCameras.length) % rearCameras.length;
+  const nextCamera = rearCameras[nextIndex];
+  const previousCameraId = activeCameraId;
+  els.cameraStatus.textContent = "Kamera wird gewechselt …";
+
+  try {
+    await startCamera(nextCamera.deviceId, false);
+    els.cameraStatus.textContent = `${formatCameraLabel(nextCamera, nextIndex)} aktiv.`;
+  } catch (error) {
+    console.error(error);
+    els.cameraStatus.textContent = "Diese Kamera konnte nicht geöffnet werden. Vorherige Kamera wird wiederhergestellt …";
+    try {
+      await startCamera(previousCameraId, true);
+      els.cameraStatus.textContent = "Vorherige Kamera wieder aktiv.";
+    } catch (restoreError) {
+      console.error(restoreError);
+      els.cameraStatus.textContent = "Kamera konnte nicht erneut gestartet werden.";
+    }
+  }
+}
+
+async function handleCameraDeviceChange() {
+  if (!els.scannerModal || els.scannerModal.classList.contains("hidden")) return;
+  await refreshRearCameraList();
+}
+
+function updateScannerModeUi() {
+  const sleeve = isSleeveModeEnabled();
+  els.scannerGuide?.classList.toggle("sleeve-guide", sleeve);
+  els.cameraModeBadge?.classList.toggle("hidden", !sleeve);
+  requestAnimationFrame(updateScannerShades);
 }
 
 function updateScannerShades() {
@@ -249,7 +756,14 @@ async function captureLiveCard() {
 
   try {
     const canvas = captureGuideFromVideo(els.cameraVideo, els.cameraViewport, els.scannerGuide);
-    await setPreparedCanvases([canvas], "Live-Scanner", "exakt zugeschnitten");
+    const canvases = isSleeveModeEnabled()
+      ? [enhanceSleevedCapture(canvas), canvas]
+      : [canvas];
+    await setPreparedCanvases(
+      canvases,
+      "Live-Scanner",
+      isSleeveModeEnabled() ? "Schutzhüllen-Modus · Reflexionsausgleich" : "exakt zugeschnitten"
+    );
     refreshStatusFromSettings();
     closeLiveScanner();
     els.previewWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -277,9 +791,11 @@ function captureGuideFromVideo(video, viewportElement, guideElement) {
   let sw = guide.width / coverScale;
   let sh = guide.height / coverScale;
 
-  // Ein sehr kleiner Sicherheitsrand verhindert, dass die Kartenkante abgeschnitten wird.
-  const marginX = sw * 0.012;
-  const marginY = sh * 0.012;
+  // Im Schutzhüllen-Modus bleibt etwas mehr Rand erhalten, damit Sleeve oder
+  // Toploader nicht versehentlich die eigentliche Kartenkante abschneiden.
+  const safetyMargin = isSleeveModeEnabled() ? 0.038 : 0.012;
+  const marginX = sw * safetyMargin;
+  const marginY = sh * safetyMargin;
   sx = Math.max(0, sx - marginX);
   sy = Math.max(0, sy - marginY);
   sw = Math.min(sourceWidth - sx, sw + marginX * 2);
@@ -342,18 +858,40 @@ function prepareGalleryCanvases(sourceCanvas) {
    * Galerie-Fotos werden bewusst ohne OpenCV vorbereitet. Das große
    * WebAssembly-Paket war auf iPhones die häufigste Ursache für Hänger direkt
    * nach der Bildauswahl. Zwei leichte Ausschnitte reichen für die KI und die
-   * lokale Rückfallerkennung aus und halten den Speicherverbrauch deutlich
-   * niedriger.
+   * lokale Rückfallerkennung aus und halten den Speicherverbrauch niedrig.
    */
-  const canvases = [
-    centerCardCrop(sourceCanvas, 0.90, -0.025),
-    centerCardCrop(sourceCanvas, 0.72, -0.025)
-  ];
+  if (isSleeveModeEnabled()) {
+    const original = centerCardCrop(sourceCanvas, 0.92, -0.02);
+    return {
+      canvases: [enhanceSleevedCapture(original), original],
+      status: "Schutzhüllen-Modus · Reflexionsausgleich"
+    };
+  }
 
   return {
-    canvases,
+    canvases: [
+      centerCardCrop(sourceCanvas, 0.90, -0.025),
+      centerCardCrop(sourceCanvas, 0.72, -0.025)
+    ],
     status: "speicherschonend vorbereitet · KI zuerst"
   };
+}
+
+function enhanceSleevedCapture(sourceCanvas) {
+  const canvas = createCanvas(sourceCanvas.width, sourceCanvas.height);
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  try {
+    ctx.filter = "contrast(1.12) brightness(1.025) saturate(0.94)";
+  } catch {
+    // Ältere Browser ignorieren den Filter und nutzen die unveränderte Kopie.
+  }
+  ctx.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+  ctx.filter = "none";
+  return canvas;
 }
 
 async function setPreparedCanvases(canvases, label, status) {
@@ -521,11 +1059,13 @@ async function saveAiSettings() {
 
     els.aiStatus.textContent = `KI-Verbindung hergestellt · CardDex AI ${data.version || ""}`.trim();
     els.aiStatus.className = "ai-status success";
+    if (els.workerVersionText) els.workerVersionText.textContent = data.version ? String(data.version) : "verbunden";
     setAiState("green", false, "Cloudflare aktiv");
     setScanState("green", false, "KI BEREIT");
   } catch (error) {
     els.aiStatus.textContent = `Worker nicht erreichbar: ${String(error?.message || error)}`;
     els.aiStatus.className = "ai-status error";
+    if (els.workerVersionText) els.workerVersionText.textContent = "nicht erreichbar";
     setAiErrorState();
   }
 }
@@ -543,6 +1083,7 @@ function updateAiStatus() {
   } else {
     setAiState("off", false, "Nicht verbunden");
     setScanState("off", false, "KI AUS");
+    if (els.workerVersionText) els.workerVersionText.textContent = "nicht verbunden";
   }
 }
 
@@ -928,7 +1469,7 @@ async function analyzePreparedCard() {
       + `
 
 Lokale OCR ausgeführt: ${usedLocalOcr ? "ja" : "nein – KI-Ergebnis war ausreichend"}`;
-    els.debugPanel.classList.remove("hidden");
+    updateDebugPanelVisibility(true);
 
     setProgress("Treffer werden sortiert …", 82);
     // Auch bei erfolgreicher KI wird das Kartenbild gegengeprüft. Dadurch kann
@@ -2013,7 +2554,7 @@ async function enrichTopCandidates(ranked, language) {
       return card;
     }
   });
-  return enriched.sort((a, b) => b._score - a._score).slice(0, MAX_RESULTS);
+  return enriched.sort((a, b) => b._score - a._score).slice(0, getResultLimit());
 }
 
 function createCardDescriptor(canvas) {
