@@ -236,7 +236,10 @@
       variants: card.variants || null,
       pricing: card.pricing || null,
       cardmarketUrl: normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || ""),
+      cardmarketSetCode: normalizeCardmarketSetCode(card.cardmarketSetCode || card.set?.ptcgoCode || ""),
+      pokemonTcgId: String(card.pokemonTcgId || ""),
       englishName: card.englishName || "",
+      cardmarketCheckedAt: card.cardmarketCheckedAt || "",
       detailsFetchedAt: card.detailsFetchedAt || "",
       updatedAt: new Date().toISOString()
     };
@@ -630,7 +633,8 @@
 
     const card = entry.card || {};
     const isStale = !card.detailsFetchedAt || Date.now() - Date.parse(card.detailsFetchedAt) > CARD_DATA_MAX_AGE;
-    if (!card.image || isStale || !card.rarity || !card.illustrator) {
+    const cardmarketMetadataMissing = !getCardmarketDirectUrl(card) && !card.cardmarketSetCode && !isFresh(card.cardmarketCheckedAt);
+    if (!card.image || isStale || !card.rarity || !card.illustrator || cardmarketMetadataMissing) {
       setDetailLoading(true, "Kartendaten werden aktualisiert …");
       try {
         await repairCardData(entry.cardId, entry.language, false, true);
@@ -762,13 +766,12 @@
   function updateCardmarketDetailLink(card) {
     const link = $("#detailCardmarketLink");
     if (!link) return;
-    const direct = normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || "");
+    const direct = getCardmarketDirectUrl(card);
     if (direct) {
       link.href = direct;
       return;
     }
-    const compactIdentifier = [String(card.setId || "").toUpperCase(), String(card.localId || "")].filter(Boolean).join("");
-    const query = [card.englishName || card.name, card.setName, compactIdentifier || card.localId].filter(Boolean).join(" ");
+    const query = buildCardmarketFallbackQuery(card);
     link.href = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(query)}`;
   }
 
@@ -830,7 +833,8 @@
 
   async function repairCardData(cardId, preferredLanguage = "de", forceEnglishImage = false, forceRefresh = false) {
     const existing = await getCard(cardId);
-    if (!forceRefresh && existing?.image && isFresh(existing.detailsFetchedAt)) return existing;
+    const cardmarketMetadataReady = getCardmarketDirectUrl(existing) || existing?.cardmarketSetCode || isFresh(existing?.cardmarketCheckedAt);
+    if (!forceRefresh && existing?.image && cardmarketMetadataReady && isFresh(existing.detailsFetchedAt)) return existing;
     const cacheKey = `${cardId}:${preferredLanguage}:${forceEnglishImage ? "forced" : "normal"}`;
     if (cardFetchPromises.has(cacheKey)) return cardFetchPromises.get(cacheKey);
 
@@ -868,8 +872,11 @@
       if (!primary && !imageSource && !pokemonFallback) throw new Error("Kartendaten nicht gefunden");
       const merged = mergeCardData(existing, primary || imageSource || pokemonFallback, primaryLanguage || imageLanguage || "en", imageSource || pokemonFallback, imageLanguage || "en");
       if (pokemonFallback?.cardmarketUrl) merged.cardmarketUrl = pokemonFallback.cardmarketUrl;
+      if (pokemonFallback?.cardmarketSetCode) merged.cardmarketSetCode = pokemonFallback.cardmarketSetCode;
+      if (pokemonFallback?.pokemonTcgId) merged.pokemonTcgId = pokemonFallback.pokemonTcgId;
       if (pokemonFallback?.englishName) merged.englishName = pokemonFallback.englishName;
       if (pokemonFallback?.pricing) merged.pricing = mergePricing(merged.pricing, pokemonFallback.pricing);
+      merged.cardmarketCheckedAt = new Date().toISOString();
 
       // Eine parallel laufende Reparatur darf ein bereits erfolgreich gespeichertes
       // Direktbild oder einen Cardmarket-Link nicht wieder mit älteren Daten überschreiben.
@@ -906,13 +913,28 @@
     const number = String(primary?.localId || existing?.localId || "").trim();
     const englishName = String(englishCard?.name || "").trim();
     if (!number) return null;
+
+    let cards = [];
+    const directCandidateId = buildPokemonTcgCandidateId(primary || existing);
+    if (directCandidateId) {
+      const directResponse = await fetch(`${POKEMON_TCG_API}/cards/${encodeURIComponent(directCandidateId)}`, { cache: "no-store" }).catch(() => null);
+      if (directResponse?.ok) {
+        const directPayload = await directResponse.json();
+        if (directPayload?.data) cards = [directPayload.data];
+      }
+    }
+
     const cleanNumber = number.replace(/["\:]/g, " ");
     const cleanName = englishName.replace(/["\:]/g, " ");
     const q = englishName ? `number:${cleanNumber} name:${cleanName}*` : `number:${cleanNumber}`;
     let params = new URLSearchParams({ q, pageSize: "20" });
-    let response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
-    let payload = response.ok ? await response.json() : null;
-    let cards = Array.isArray(payload?.data) ? payload.data : [];
+    let response = null;
+    let payload = null;
+    if (!cards.length) {
+      response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
+      payload = response.ok ? await response.json() : null;
+      cards = Array.isArray(payload?.data) ? payload.data : [];
+    }
     if (!cards.length && englishName) {
       params = new URLSearchParams({ q: `number:${cleanNumber}`, pageSize: "50" });
       response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
@@ -924,6 +946,8 @@
     const best = cards.map(card => ({ card, score: pokemonFallbackScore(card, existing, normalizedEnglish) }))
       .sort((a, b) => b.score - a.score)[0]?.card;
     if (!best) return null;
+    const normalizedMarketUrl = normalizeCardmarketUrl(best.cardmarket?.url) ||
+      (best.cardmarket ? buildPokemonTcgCardmarketUrl(best.id) : "");
     return {
       id: existing?.id || `ptcg-${best.id}`,
       name: existing?.name || best.name,
@@ -931,9 +955,11 @@
       localId: String(best.number || number),
       image: best.images?.large || best.images?.small || "",
       _directImage: true,
-      cardmarketUrl: normalizeCardmarketUrl(best.cardmarket?.url),
+      pokemonTcgId: String(best.id || ""),
+      cardmarketSetCode: normalizeCardmarketSetCode(best.set?.ptcgoCode || ""),
+      cardmarketUrl: normalizedMarketUrl,
       pricing: best.cardmarket?.prices ? { cardmarket: {
-        url: normalizeCardmarketUrl(best.cardmarket?.url),
+        url: normalizedMarketUrl,
         trend: best.cardmarket.prices.trendPrice,
         low: best.cardmarket.prices.lowPrice,
         avg30: best.cardmarket.prices.avg30
@@ -945,9 +971,15 @@
     let score = 0;
     if (String(card.number || "").replace(/^0+/, "") === String(existing?.localId || "").replace(/^0+/, "")) score += 100;
     if (normalizedEnglish && normalizeComparableText(card.name) === normalizedEnglish) score += 120;
+    const candidateSetId = toPokemonTcgSetId(card.set?.id || "");
+    const existingSetId = toPokemonTcgSetId(existing?.setId || "");
+    if (candidateSetId && existingSetId && candidateSetId === existingSetId) score += 220;
     const setText = normalizeComparableText(`${card.set?.id || ""} ${card.set?.name || ""}`);
     const existingSet = normalizeComparableText(`${existing?.setId || ""} ${existing?.setName || ""}`);
     if (existingSet && setText && (setText.includes(existingSet) || existingSet.includes(setText))) score += 80;
+    const candidateTotal = Number(card.set?.printedTotal || 0);
+    const existingTotal = Number(existing?.officialTotal || 0);
+    if (candidateTotal && existingTotal && candidateTotal === existingTotal) score += 55;
     return score;
   }
 
@@ -957,9 +989,65 @@
 
   function normalizeCardmarketUrl(value) {
     const url = String(value || "").trim();
-    if (/^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url)) return url;
-    if (/^https:\/\/prices\.pokemontcg\.io\/cardmarket\/[a-z0-9-]+(?:\?.*)?$/i.test(url)) return url;
+    if (!url) return "";
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") return "";
+      const host = parsed.hostname.toLowerCase();
+      if ((host === "cardmarket.com" || host === "www.cardmarket.com") &&
+          /^\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(parsed.pathname)) return parsed.href;
+      if (host === "prices.pokemontcg.io" && /^\/cardmarket\/[a-z0-9._-]+\/?$/i.test(parsed.pathname)) return parsed.href;
+    } catch {
+      return "";
+    }
     return "";
+  }
+
+  function normalizeCardmarketSetCode(value) {
+    return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+
+  function normalizeCardmarketCollectorNumber(value) {
+    return String(value || "").trim().toUpperCase().replace(/\s+/g, "").replace(/[^A-Z0-9-]/g, "");
+  }
+
+  function toPokemonTcgSetId(value) {
+    let id = String(value || "").trim().toLowerCase();
+    if (!id) return "";
+    const trainerGallery = id.match(/^swsh(\d+)\.5tg$/);
+    if (trainerGallery) return `swsh${trainerGallery[1]}tg`;
+    id = id.replace(/\.5/g, "pt5");
+    return id.replace(/[^a-z0-9]/g, "");
+  }
+
+  function buildPokemonTcgCandidateId(card) {
+    const setId = toPokemonTcgSetId(card?.set?.id || card?._setBrief?.id || card?.setId || "");
+    const number = String(card?.localId || "").trim();
+    if (!setId || !/^[a-z0-9-]+$/i.test(number)) return "";
+    return `${setId}-${number}`;
+  }
+
+  function buildPokemonTcgCardmarketUrl(cardId) {
+    const id = String(cardId || "").trim();
+    return /^[a-z0-9._-]+$/i.test(id) ? `https://prices.pokemontcg.io/cardmarket/${encodeURIComponent(id)}` : "";
+  }
+
+  function getCardmarketDirectUrl(card) {
+    const stored = normalizeCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || "");
+    if (stored) return stored;
+    if (card?.pokemonTcgId && card?.pricing?.cardmarket) return buildPokemonTcgCardmarketUrl(card.pokemonTcgId);
+    return "";
+  }
+
+  function buildCardmarketFallbackQuery(card) {
+    const name = String(card?.name || card?.englishName || "").trim();
+    const setCode = normalizeCardmarketSetCode(card?.cardmarketSetCode || "");
+    const number = normalizeCardmarketCollectorNumber(card?.localId || "");
+    const parts = [];
+    if (name) parts.push(name);
+    if (setCode && !number.startsWith(setCode)) parts.push(setCode);
+    if (number) parts.push(number);
+    return parts.join(" ").replace(/\s+/g, " ").trim();
   }
 
   function mergePricing(current, fallback) {
@@ -980,12 +1068,15 @@
       result.imageLanguage = latest.imageLanguage || result.imageLanguage;
     }
 
-    const latestMarket = normalizeCardmarketUrl(latest.cardmarketUrl || latest.pricing?.cardmarket?.url || "");
-    const candidateMarket = normalizeCardmarketUrl(result.cardmarketUrl || result.pricing?.cardmarket?.url || "");
+    const latestMarket = getCardmarketDirectUrl(latest);
+    const candidateMarket = getCardmarketDirectUrl(result);
     if (!candidateMarket && latestMarket) result.cardmarketUrl = latestMarket;
 
     result.pricing = mergePricing(result.pricing, latest.pricing);
     result.englishName = result.englishName || latest.englishName || "";
+    result.cardmarketSetCode = result.cardmarketSetCode || latest.cardmarketSetCode || "";
+    result.pokemonTcgId = result.pokemonTcgId || latest.pokemonTcgId || "";
+    result.cardmarketCheckedAt = result.cardmarketCheckedAt || latest.cardmarketCheckedAt || "";
     return result;
   }
 
@@ -1023,6 +1114,11 @@
       types: Array.isArray(primary?.types) ? primary.types : (existing?.types || []),
       variants: primary?.variants || existing?.variants || null,
       pricing: primary?.pricing || existing?.pricing || null,
+      cardmarketUrl: normalizeCardmarketUrl(primary?.cardmarketUrl || primary?.pricing?.cardmarket?.url || existing?.cardmarketUrl || existing?.pricing?.cardmarket?.url || ""),
+      cardmarketSetCode: normalizeCardmarketSetCode(primary?.cardmarketSetCode || primary?.set?.ptcgoCode || existing?.cardmarketSetCode || ""),
+      pokemonTcgId: String(primary?.pokemonTcgId || existing?.pokemonTcgId || ""),
+      englishName: primary?.englishName || existing?.englishName || "",
+      cardmarketCheckedAt: existing?.cardmarketCheckedAt || "",
       detailsFetchedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

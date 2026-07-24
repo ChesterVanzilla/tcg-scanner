@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.8.3";
+const APP_VERSION = "6.8.4";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -2441,8 +2441,11 @@ async function fetchPokemonTcgCandidates(parsed) {
     set: card.set ? {
       id: card.set.id || "",
       name: card.set.name || "Pokémon TCG API",
+      ptcgoCode: card.set.ptcgoCode || "",
       cardCount: { official: card.set.printedTotal || null }
     } : null,
+    pokemonTcgId: card.id || "",
+    cardmarketSetCode: normalizeCardmarketSetCode(card.set?.ptcgoCode || ""),
     cardmarketUrl: normalizeExternalCardmarketUrl(card.cardmarket?.url),
     pricing: card.cardmarket?.prices ? { cardmarket: {
       url: normalizeExternalCardmarketUrl(card.cardmarket?.url),
@@ -2460,13 +2463,144 @@ function escapePokemonQueryValue(value) {
 
 function normalizeExternalCardmarketUrl(value) {
   const url = String(value || "").trim();
-  if (/^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url)) return url;
-  if (/^https:\/\/prices\.pokemontcg\.io\/cardmarket\/[a-z0-9-]+(?:\?.*)?$/i.test(url)) return url;
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return "";
+    const host = parsed.hostname.toLowerCase();
+    if ((host === "cardmarket.com" || host === "www.cardmarket.com") &&
+        /^\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(parsed.pathname)) return parsed.href;
+    if (host === "prices.pokemontcg.io" && /^\/cardmarket\/[a-z0-9._-]+\/?$/i.test(parsed.pathname)) return parsed.href;
+  } catch {
+    return "";
+  }
   return "";
 }
 
+function normalizeCardmarketSetCode(value) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function buildPokemonTcgCardmarketUrl(cardId) {
+  const id = String(cardId || "").trim();
+  return /^[a-z0-9._-]+$/i.test(id) ? `https://prices.pokemontcg.io/cardmarket/${encodeURIComponent(id)}` : "";
+}
+
 function getCardmarketDirectUrl(card) {
-  return normalizeExternalCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || card?._cardmarketUrl || "");
+  const stored = normalizeExternalCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || card?._cardmarketUrl || "");
+  if (stored) return stored;
+  if (card?.pokemonTcgId && card?.pricing?.cardmarket) {
+    return buildPokemonTcgCardmarketUrl(card.pokemonTcgId);
+  }
+  return "";
+}
+
+function buildCardmarketFallbackQuery(card, parsed, includeSetCode = true) {
+  const marketName = String(
+    includeSetCode
+      ? (card?.name || card?.englishName || parsed?.nameHints?.[0]?.value || "")
+      : (card?.englishName || card?.name || parsed?.nameHints?.[0]?.value || "")
+  ).trim();
+  const number = normalizeCollectorNumber(card?.localId || parsed?.identifiers?.[0]?.number || parsed?.numbers?.[0] || "");
+  const marketSetCode = normalizeCardmarketSetCode(card?.cardmarketSetCode || card?.set?.ptcgoCode || card?._cardmarketSetCode || "");
+  const parts = [];
+  if (marketName) parts.push(marketName);
+  if (includeSetCode && marketSetCode && !String(number).toUpperCase().startsWith(marketSetCode)) parts.push(marketSetCode);
+  if (number) parts.push(number);
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function toPokemonTcgSetId(value) {
+  let id = String(value || "").trim().toLowerCase();
+  if (!id) return "";
+  const trainerGallery = id.match(/^swsh(\d+)\.5tg$/);
+  if (trainerGallery) return `swsh${trainerGallery[1]}tg`;
+  id = id.replace(/\.5/g, "pt5");
+  return id.replace(/[^a-z0-9]/g, "");
+}
+
+function buildPokemonTcgCandidateId(card) {
+  const setId = toPokemonTcgSetId(card?.set?.id || card?._setBrief?.id || card?._setId || card?.setId || "");
+  const number = String(card?.localId || "").trim();
+  if (!setId || !/^[a-z0-9-]+$/i.test(number)) return "";
+  return `${setId}-${number}`;
+}
+
+function mapPokemonCardmarketMetadata(card, pokemonCard) {
+  if (!pokemonCard) return card;
+  const marketUrl = normalizeExternalCardmarketUrl(pokemonCard.cardmarket?.url) ||
+    (pokemonCard.cardmarket ? buildPokemonTcgCardmarketUrl(pokemonCard.id) : "");
+  const marketPricing = pokemonCard.cardmarket?.prices ? {
+    cardmarket: {
+      url: marketUrl,
+      trend: pokemonCard.cardmarket.prices.trendPrice,
+      low: pokemonCard.cardmarket.prices.lowPrice,
+      avg30: pokemonCard.cardmarket.prices.avg30
+    }
+  } : (marketUrl ? { cardmarket: { url: marketUrl } } : null);
+  return {
+    ...card,
+    englishName: pokemonCard.name || card?.englishName || "",
+    pokemonTcgId: pokemonCard.id || card?.pokemonTcgId || "",
+    cardmarketSetCode: normalizeCardmarketSetCode(pokemonCard.set?.ptcgoCode || card?.cardmarketSetCode || ""),
+    cardmarketUrl: marketUrl || card?.cardmarketUrl || "",
+    pricing: marketPricing || card?.pricing || null
+  };
+}
+
+function pokemonMetadataScore(candidate, card) {
+  let score = 0;
+  const targetNumber = normalizeCollectorNumber(card?.localId || "");
+  const candidateNumber = normalizeCollectorNumber(candidate?.number || "");
+  if (targetNumber && candidateNumber === targetNumber) score += 120;
+
+  const targetSetId = toPokemonTcgSetId(card?.set?.id || card?._setBrief?.id || card?._setId || card?.setId || "");
+  const candidateSetId = toPokemonTcgSetId(candidate?.set?.id || "");
+  if (targetSetId && candidateSetId === targetSetId) score += 260;
+
+  const targetTotal = Number(card?.set?.cardCount?.official || card?._setBrief?.cardCount?.official || 0);
+  const candidateTotal = Number(candidate?.set?.printedTotal || 0);
+  if (targetTotal && candidateTotal && targetTotal === candidateTotal) score += 55;
+
+  if ((card?._dataLanguage || "") === "en") {
+    const targetName = normalizeText(card?.name || "");
+    const candidateName = normalizeText(candidate?.name || "");
+    if (targetName && candidateName === targetName) score += 150;
+  }
+  return score;
+}
+
+async function enrichPrimaryCardmarketMetadata(card) {
+  if (!card || getCardmarketDirectUrl(card)) return card;
+  let pokemonCard = null;
+  const candidateId = buildPokemonTcgCandidateId(card);
+
+  if (candidateId) {
+    try {
+      const directResponse = await fetch(`${POKEMON_TCG_API}/cards/${encodeURIComponent(candidateId)}`, { cache: "no-store" });
+      if (directResponse.ok) pokemonCard = (await directResponse.json())?.data || null;
+    } catch {
+      // Die kurze Cardmarket-Suche bleibt als Rückfallebene verfügbar.
+    }
+  }
+
+  if (!pokemonCard && card?.localId) {
+    try {
+      const number = escapePokemonQueryValue(card.localId);
+      const params = new URLSearchParams({ q: `number:${number}`, pageSize: "50" });
+      const response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
+      if (response.ok) {
+        const payload = await response.json();
+        pokemonCard = (Array.isArray(payload?.data) ? payload.data : [])
+          .map(item => ({ item, score: pokemonMetadataScore(item, card) }))
+          .sort((a, b) => b.score - a.score)[0]?.item || null;
+      }
+    } catch {
+      // Kein Abbruch: Der Kartenname + die Nummer funktionieren weiterhin als Suche.
+    }
+  }
+
+  return mapPokemonCardmarketMetadata(card, pokemonCard);
 }
 
 function hasStrongSetIdentifier(parsed) {
@@ -2648,7 +2782,9 @@ async function enrichTopCandidates(ranked, language) {
       return card;
     }
   });
-  return enriched.sort((a, b) => b._score - a._score).slice(0, getResultLimit());
+  const sorted = enriched.sort((a, b) => b._score - a._score).slice(0, getResultLimit());
+  if (sorted[0]) sorted[0] = await enrichPrimaryCardmarketMetadata(sorted[0]);
+  return sorted;
 }
 
 function createCardDescriptor(canvas) {
@@ -2960,13 +3096,12 @@ function buildPriceBox(pricing) {
 function buildCardmarketUrl(card, parsed, precise) {
   const directUrl = getCardmarketDirectUrl(card);
   if (precise && directUrl) return directUrl;
-  const setCode = parsed?.identifiers?.[0]?.setCode || card?.setCode || card?.setId || "";
-  const number = normalizeCollectorNumber(card?.localId || parsed?.identifiers?.[0]?.number || "");
-  const compactIdentifier = [String(setCode).toUpperCase(), number].filter(Boolean).join("");
-  const marketName = card?.englishName || card?.name;
-  const setName = card?.set?.name || card?._setBrief?.name || "";
-  const queryParts = precise ? [marketName, setName, compactIdentifier || number] : [marketName, setName, setCode, number];
-  return buildCardmarketSearchUrl(queryParts.filter(Boolean).join(" "));
+
+  // Cardmarket reagiert empfindlich auf zu lange Suchphrasen und gemischte
+  // Set-Bezeichnungen. Deshalb verwenden wir nur Kartenname, optional den
+  // echten Cardmarket/PTCGO-Setcode und die Sammlernummer.
+  const query = buildCardmarketFallbackQuery(card, parsed, precise);
+  return buildCardmarketSearchUrl(query);
 }
 
 function buildParsedSearchQuery(parsed) {
