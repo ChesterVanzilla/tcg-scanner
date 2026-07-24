@@ -9,6 +9,7 @@
   const ACTIVE_COLLECTION_KEY = "carddex-v67-active-collection";
   const BACKUP_VERSION = 2;
   const CARD_DATA_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+  const CARDMARKET_LINK_MIGRATION_KEY = "carddex-v685-cardmarket-link-migration";
 
   const LANGUAGE_OPTIONS = [
     ["de", "Deutsch"],
@@ -234,7 +235,7 @@
       hp: card.hp ?? null,
       types: Array.isArray(card.types) ? card.types : [],
       variants: card.variants || null,
-      pricing: card.pricing || null,
+      pricing: sanitizePricing(card.pricing),
       cardmarketUrl: normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || ""),
       cardmarketSetCode: normalizeCardmarketSetCode(card.cardmarketSetCode || card.set?.ptcgoCode || ""),
       pokemonTcgId: String(card.pokemonTcgId || ""),
@@ -431,7 +432,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: "6.8",
+      appVersion: "6.8.5",
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,
@@ -769,10 +770,12 @@
     const direct = getCardmarketDirectUrl(card);
     if (direct) {
       link.href = direct;
+      link.textContent = "Auf Cardmarket öffnen";
       return;
     }
     const query = buildCardmarketFallbackQuery(card);
     link.href = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(query)}`;
+    link.textContent = "Auf Cardmarket suchen";
   }
 
   function setDetailLoading(isLoading, message, isError = false) {
@@ -946,8 +949,7 @@
     const best = cards.map(card => ({ card, score: pokemonFallbackScore(card, existing, normalizedEnglish) }))
       .sort((a, b) => b.score - a.score)[0]?.card;
     if (!best) return null;
-    const normalizedMarketUrl = normalizeCardmarketUrl(best.cardmarket?.url) ||
-      (best.cardmarket ? buildPokemonTcgCardmarketUrl(best.id) : "");
+    const normalizedMarketUrl = normalizeCardmarketUrl(best.cardmarket?.url);
     return {
       id: existing?.id || `ptcg-${best.id}`,
       name: existing?.name || best.name,
@@ -959,7 +961,7 @@
       cardmarketSetCode: normalizeCardmarketSetCode(best.set?.ptcgoCode || ""),
       cardmarketUrl: normalizedMarketUrl,
       pricing: best.cardmarket?.prices ? { cardmarket: {
-        url: normalizedMarketUrl,
+        ...(normalizedMarketUrl ? { url: normalizedMarketUrl } : {}),
         trend: best.cardmarket.prices.trendPrice,
         low: best.cardmarket.prices.lowPrice,
         avg30: best.cardmarket.prices.avg30
@@ -996,11 +998,23 @@
       const host = parsed.hostname.toLowerCase();
       if ((host === "cardmarket.com" || host === "www.cardmarket.com") &&
           /^\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(parsed.pathname)) return parsed.href;
-      if (host === "prices.pokemontcg.io" && /^\/cardmarket\/[a-z0-9._-]+\/?$/i.test(parsed.pathname)) return parsed.href;
     } catch {
       return "";
     }
     return "";
+  }
+
+  function sanitizePricing(pricing) {
+    if (!pricing || typeof pricing !== "object") return pricing || null;
+    const result = { ...pricing };
+    if (pricing.cardmarket && typeof pricing.cardmarket === "object") {
+      const cardmarket = { ...pricing.cardmarket };
+      const directUrl = normalizeCardmarketUrl(cardmarket.url || "");
+      if (directUrl) cardmarket.url = directUrl;
+      else delete cardmarket.url;
+      result.cardmarket = cardmarket;
+    }
+    return result;
   }
 
   function normalizeCardmarketSetCode(value) {
@@ -1027,16 +1041,8 @@
     return `${setId}-${number}`;
   }
 
-  function buildPokemonTcgCardmarketUrl(cardId) {
-    const id = String(cardId || "").trim();
-    return /^[a-z0-9._-]+$/i.test(id) ? `https://prices.pokemontcg.io/cardmarket/${encodeURIComponent(id)}` : "";
-  }
-
   function getCardmarketDirectUrl(card) {
-    const stored = normalizeCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || "");
-    if (stored) return stored;
-    if (card?.pokemonTcgId && card?.pricing?.cardmarket) return buildPokemonTcgCardmarketUrl(card.pokemonTcgId);
-    return "";
+    return normalizeCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || "");
   }
 
   function buildCardmarketFallbackQuery(card) {
@@ -1051,9 +1057,9 @@
   }
 
   function mergePricing(current, fallback) {
-    if (!current) return fallback || null;
-    if (!fallback) return current;
-    return { ...fallback, ...current, cardmarket: { ...(fallback.cardmarket || {}), ...(current.cardmarket || {}) } };
+    if (!current) return sanitizePricing(fallback);
+    if (!fallback) return sanitizePricing(current);
+    return sanitizePricing({ ...fallback, ...current, cardmarket: { ...(fallback.cardmarket || {}), ...(current.cardmarket || {}) } });
   }
 
   function preserveBestExternalData(latest, candidate) {
@@ -1113,7 +1119,7 @@
       hp: primary?.hp ?? existing?.hp ?? null,
       types: Array.isArray(primary?.types) ? primary.types : (existing?.types || []),
       variants: primary?.variants || existing?.variants || null,
-      pricing: primary?.pricing || existing?.pricing || null,
+      pricing: sanitizePricing(primary?.pricing || existing?.pricing || null),
       cardmarketUrl: normalizeCardmarketUrl(primary?.cardmarketUrl || primary?.pricing?.cardmarket?.url || existing?.cardmarketUrl || existing?.pricing?.cardmarket?.url || ""),
       cardmarketSetCode: normalizeCardmarketSetCode(primary?.cardmarketSetCode || primary?.set?.ptcgoCode || existing?.cardmarketSetCode || ""),
       pokemonTcgId: String(primary?.pokemonTcgId || existing?.pokemonTcgId || ""),
@@ -1206,10 +1212,44 @@
     input.value = String(next);
   }
 
+  async function migrateLegacyCardmarketLinks() {
+    try {
+      if (localStorage.getItem(CARDMARKET_LINK_MIGRATION_KEY) === "done") return;
+      const db = await openDatabase();
+      const tx = db.transaction("cards", "readwrite");
+      const store = tx.objectStore("cards");
+      const cards = await requestToPromise(store.getAll());
+      const now = new Date().toISOString();
+
+      for (const card of cards) {
+        const directUrl = normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || "");
+        const pricing = sanitizePricing(card.pricing);
+        const oldUrl = String(card.cardmarketUrl || "");
+        const oldPricingUrl = String(card.pricing?.cardmarket?.url || "");
+        const newPricingUrl = String(pricing?.cardmarket?.url || "");
+        if (oldUrl !== directUrl || oldPricingUrl !== newPricingUrl) {
+          store.put({
+            ...card,
+            cardmarketUrl: directUrl,
+            pricing,
+            cardmarketCheckedAt: "",
+            updatedAt: now
+          });
+        }
+      }
+
+      await transactionDone(tx);
+      localStorage.setItem(CARDMARKET_LINK_MIGRATION_KEY, "done");
+    } catch (error) {
+      console.warn("Alte Cardmarket-Weiterleitungen konnten nicht vollständig bereinigt werden:", error);
+    }
+  }
+
   async function init() {
     try {
       await requestPersistentStorage();
       await ensureDefaultCollection();
+      await migrateLegacyCardmarketLinks();
       wireUi();
       await refreshAll();
     } catch (error) {
