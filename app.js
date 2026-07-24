@@ -3,7 +3,8 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.8";
+const APP_VERSION = "6.8.1";
+const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
@@ -1559,17 +1560,28 @@ function assessAiCandidateConsistency(ai, candidates) {
     return { verified: true, conflict: false, reason: "Name und Nummer passen zu demselben Datenbankeintrag" };
   }
 
-  if (nameMatches.length && (numberMatches.length || !numberMatches.length)) {
+  // Eine fehlende Nummer in TCGdex ist kein Widerspruch. Gerade neue Promos
+  // können bereits korrekt gelesen sein, obwohl der Datenbankeintrag noch fehlt.
+  // Verworfen wird nur, wenn die Datenbank dieselbe Nummer tatsächlich kennt,
+  // diese Treffer aber klar zu einem anderen Kartennamen gehören.
+  if (numberMatches.length && !compatibleNumberMatches.length) {
     return {
       verified: false,
       conflict: true,
-      reason: numberMatches.length
-        ? "Die gelesene Nummer gehört in der Datenbank zu einer anderen Karte"
-        : "Die gelesene Nummer ist für den erkannten Namen nicht auffindbar"
+      reason: "Die gelesene Nummer gehört in der Datenbank zu einer anderen Karte"
     };
   }
 
-  return { verified: false, conflict: false, reason: "Datenbankabgleich nicht eindeutig" };
+  if (nameMatches.length && !numberMatches.length) {
+    return {
+      verified: false,
+      conflict: false,
+      incomplete: true,
+      reason: "Name erkannt; der passende Nummerneintrag fehlt noch in der Datenbank"
+    };
+  }
+
+  return { verified: false, conflict: false, incomplete: true, reason: "Datenbankabgleich nicht eindeutig oder noch unvollständig" };
 }
 
 function discardRejectedAiIdentifier(parsed, ai) {
@@ -2359,6 +2371,19 @@ async function findCandidates(parsed, language) {
     }
   }
 
+  // Zweite, schlüssellose Rückfallebene: Pokémon TCG API. Sie liefert vor
+  // allem englische Datensätze und direkte Kartenbilder. Wir fragen sie nur ab,
+  // wenn TCGdex keinen Treffer geliefert hat, damit die kostenlosen Limits
+  // geschont werden.
+  if (candidateMap.size === 0) {
+    try {
+      const fallbackCards = await fetchPokemonTcgCandidates(parsed);
+      for (const card of fallbackCards) candidateMap.set(`pokemontcg:${card.id}`, card);
+    } catch (error) {
+      console.warn("Pokémon-TCG-API-Fallback nicht verfügbar:", error);
+    }
+  }
+
   let candidates = [...candidateMap.values()];
   const setMapEntries = await Promise.all(searchLanguages.map(async dataLanguage => {
     try { return [dataLanguage, await getSetsMap(dataLanguage)]; }
@@ -2385,6 +2410,56 @@ async function findCandidates(parsed, language) {
   }
 
   return candidates;
+}
+
+async function fetchPokemonTcgCandidates(parsed) {
+  const clauses = [];
+  const number = parsed.identifiers?.[0]?.number || parsed.numbers?.[0] || "";
+  const name = parsed.nameHints?.[0]?.value || "";
+  if (number) clauses.push(`number:${escapePokemonQueryValue(number)}`);
+  // Deutsche Namen stimmen oft nicht mit der englischen Datenbank überein.
+  // Der Name wird deshalb nur verwendet, wenn keine Nummer verfügbar ist.
+  if (!number && name) clauses.push(`name:${escapePokemonQueryValue(name)}*`);
+  if (!clauses.length) return [];
+
+  const params = new URLSearchParams({ q: clauses.join(" "), pageSize: "40" });
+  const response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Pokémon TCG API: ${response.status}`);
+  const payload = await response.json();
+  return (Array.isArray(payload?.data) ? payload.data : []).map(card => ({
+    id: `ptcg-${card.id}`,
+    name: card.name || "Unbekannte Karte",
+    localId: String(card.number || ""),
+    image: card.images?.large || card.images?.small || "",
+    _directImage: true,
+    _dataLanguage: "en",
+    _externalSource: "pokemontcg",
+    rarity: card.rarity || "",
+    illustrator: card.artist || "",
+    category: card.supertype || "",
+    hp: card.hp || null,
+    types: Array.isArray(card.types) ? card.types : [],
+    set: card.set ? {
+      id: card.set.id || "",
+      name: card.set.name || "Pokémon TCG API",
+      cardCount: { official: card.set.printedTotal || null }
+    } : null,
+    pricing: card.cardmarket?.prices ? { cardmarket: {
+      trend: card.cardmarket.prices.trendPrice,
+      low: card.cardmarket.prices.lowPrice,
+      avg30: card.cardmarket.prices.avg30
+    }} : null
+  }));
+}
+
+function escapePokemonQueryValue(value) {
+  return String(value || "").trim().replace(/[\"\:]/g, " ").replace(/\s+/g, " ");
+}
+
+function cardImageUrl(card, quality = "low") {
+  if (!card?.image) return "icons/card-placeholder.svg";
+  if (card._directImage || /\.(?:webp|png|jpe?g)(?:\?|$)/i.test(card.image)) return card.image;
+  return `${String(card.image).replace(/\/$/, "")}/${quality}.webp`;
 }
 
 async function fetchCards(language, filters, limit = 100) {
@@ -2432,7 +2507,7 @@ async function rankCandidates(candidates, parsed, language, scannedCanvases) {
     await mapWithConcurrency(pool, 3, async card => {
       if (!card.image) return;
       try {
-        const image = await loadExternalImage(`${card.image}/low.webp`, 8000);
+        const image = await loadExternalImage(cardImageUrl(card, "low"), 8000);
         const candidateCanvas = drawImageToCardCanvas(image);
         try {
           const descriptor = createCardDescriptor(candidateCanvas);
@@ -2643,6 +2718,8 @@ function renderResults(cards, parsed) {
       els.resultMessage.append(document.createElement("br"), directLink);
     }
     els.resultMessage.classList.remove("hidden");
+    const provisional = createProvisionalCard(parsed);
+    if (provisional) renderProvisionalResult(provisional, parsed);
     els.resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
@@ -2667,7 +2744,7 @@ function renderResults(cards, parsed) {
     const image = document.createElement("img");
     image.loading = "lazy";
     image.alt = `${card.name || "Pokémon-Karte"} – Kartenabbildung`;
-    image.src = card.image ? `${card.image}/low.webp` : "icons/card-placeholder.svg";
+    image.src = cardImageUrl(card, "low");
     image.onerror = () => { image.src = "icons/card-placeholder.svg"; };
 
     const info = document.createElement("div");
@@ -2682,7 +2759,8 @@ function renderResults(cards, parsed) {
     if (index === 0) badges.append(createBadge(confidentTop ? "Bester Treffer" : "Ähnlichster Treffer", confidentTop));
     if (card._imageScore !== null && card._imageScore !== undefined) badges.append(createBadge(`Bild ${Math.round(card._imageScore * 100)} %`, card._imageScore >= 0.72));
     if (reliableNumberMatch) badges.append(createBadge("Nummer passt", true));
-    if (card._dataLanguage && card._dataLanguage !== els.language.value) badges.append(createBadge("engl. Datenbank-Fallback", false));
+    if (card._externalSource === "pokemontcg") badges.append(createBadge("Pokémon-API-Fallback", false));
+    else if (card._dataLanguage && card._dataLanguage !== els.language.value) badges.append(createBadge("engl. Datenbank-Fallback", false));
 
     const meta = document.createElement("p");
     meta.className = "result-meta";
@@ -2746,6 +2824,94 @@ function renderResults(cards, parsed) {
   });
 
   els.resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function createProvisionalCard(parsed) {
+  const name = String(parsed.nameHints?.[0]?.value || parsed.ai?.name || "").trim();
+  const identifier = parsed.identifiers?.[0] || null;
+  const number = normalizeCollectorNumber(identifier?.number || parsed.ai?.number || "");
+  if (!name && !number) return null;
+  const setCode = String(identifier?.setCode || parsed.ai?.setCode || "").toUpperCase();
+  let scanImage = "";
+  try {
+    const source = preparedCanvases[0];
+    if (source) scanImage = source.toDataURL("image/jpeg", 0.72);
+  } catch { /* Scanbild ist optional. */ }
+  const idPart = [setCode || "provisional", number || Date.now()].join("-").toLowerCase();
+  return {
+    id: `local-${idPart}`,
+    name: name || "Unbekannte Karte",
+    localId: number,
+    setId: setCode,
+    setName: setCode ? `${setCode} · vorläufig` : "Vorläufig erkannt",
+    _dataLanguage: els.language.value || "de",
+    _externalSource: "scan",
+    verificationStatus: "provisional",
+    confidence: Number(parsed.ai?.confidence || 0),
+    scanImage,
+    image: ""
+  };
+}
+
+function renderProvisionalResult(card, parsed) {
+  const article = document.createElement("article");
+  article.className = "result-card best-match provisional-result";
+  const image = document.createElement("img");
+  image.loading = "lazy";
+  image.alt = `${card.name} – eigenes Scanbild`;
+  image.src = card.scanImage || "icons/card-placeholder.svg";
+
+  const info = document.createElement("div");
+  info.className = "result-info";
+  const title = document.createElement("h3");
+  title.textContent = card.name;
+  const badges = document.createElement("div");
+  badges.className = "result-badges";
+  badges.append(createBadge("Vorläufig erkannt", false));
+  if (card.confidence) badges.append(createBadge(`KI ${Math.round(card.confidence * 100)} %`, card.confidence >= 0.75));
+  const meta = document.createElement("p");
+  meta.className = "result-meta";
+  meta.innerHTML = `${escapeHtml(card.setName)}<br><span class="result-number">Nr. ${escapeHtml(card.localId || "–")}</span><br><small>Kein passender Datenbankeintrag verfügbar. Die gelesenen Angaben bleiben erhalten.</small>`;
+
+  const actions = document.createElement("div");
+  actions.className = "cardmarket-actions";
+  const market = document.createElement("a");
+  market.className = "cardmarket-button";
+  market.target = "_blank";
+  market.rel = "noopener noreferrer";
+  market.href = buildCardmarketSearchUrl(buildParsedSearchQuery(parsed));
+  market.textContent = "Auf Cardmarket prüfen";
+  actions.append(market);
+
+  const collectionActions = document.createElement("div");
+  collectionActions.className = "collection-action-block";
+  const collectionSelect = document.createElement("select");
+  collectionSelect.className = "result-collection-select";
+  collectionSelect.setAttribute("aria-label", "Zielsammlung auswählen");
+  const addButton = document.createElement("button");
+  addButton.className = "add-collection-button";
+  addButton.type = "button";
+  addButton.textContent = "Vorläufig zur Sammlung hinzufügen";
+  addButton.addEventListener("click", async () => {
+    addButton.disabled = true;
+    try {
+      await window.CardDexCollections?.addCard?.(card, {
+        collectionId: collectionSelect.value || window.CardDexCollections?.getActiveCollectionId?.(),
+        language: card._dataLanguage
+      });
+      addButton.textContent = "Hinzugefügt ✓";
+    } catch (error) {
+      console.error(error);
+      addButton.textContent = "Speichern fehlgeschlagen";
+    } finally {
+      addButton.disabled = false;
+    }
+  });
+  collectionActions.append(collectionSelect, addButton);
+  info.append(title, badges, meta, actions, collectionActions);
+  article.append(image, info);
+  els.results.append(article);
+  window.CardDexCollections?.populateSelect?.();
 }
 
 function buildPriceBox(pricing) {

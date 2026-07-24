@@ -214,7 +214,7 @@
     const sourceId = String(card.id || `${card.set?.id || card._setBrief?.id || "set"}-${card.localId || "unknown"}`);
     return {
       id: sourceId,
-      source: "tcgdex",
+      source: card.source || card._externalSource || "tcgdex",
       dataLanguage: card._dataLanguage || card.dataLanguage || "",
       name: card.name || "Unbekannte Karte",
       localId: String(card.localId || ""),
@@ -222,6 +222,10 @@
       setName: card.set?.name || card._setBrief?.name || card.setName || "Set nicht angegeben",
       officialTotal: card.set?.cardCount?.official || card._setBrief?.cardCount?.official || card.officialTotal || null,
       image: normalizeImageBase(card.image || ""),
+      directImage: Boolean(card._directImage || card.directImage),
+      scanImage: String(card.scanImage || ""),
+      verificationStatus: card.verificationStatus || "verified",
+      confidence: Number(card.confidence || 0),
       imageLanguage: card.imageLanguage || card._dataLanguage || "",
       rarity: card.rarity || "",
       category: card.category || "",
@@ -272,7 +276,7 @@
     await done;
     await refreshAll();
     toast(`${normalized.name} wurde ${existing ? "erneut " : ""}zur Sammlung hinzugefügt.`);
-    if (!normalized.image) void repairCardData(normalized.id, language, false, true).then(updated => {
+    if (!normalized.image && normalized.source !== "scan" && normalized.verificationStatus !== "provisional") void repairCardData(normalized.id, language, false, true).then(updated => {
       if (updated?.image) renderCollection();
     });
     return quantity;
@@ -535,7 +539,7 @@
 
     const image = document.createElement("img");
     image.loading = "lazy";
-    image.src = getCardImageUrl(card.image, "low") || "icons/card-placeholder.svg";
+    image.src = getStoredCardImageUrl(card, "low");
     image.alt = card.name || "Pokémon-Karte";
     image.addEventListener("error", () => handleListImageError(image, entry), { once: true });
 
@@ -675,7 +679,7 @@
 
     if (image) {
       image.onerror = null;
-      image.src = getCardImageUrl(card.image, "high") || "icons/card-placeholder.svg";
+      image.src = getStoredCardImageUrl(card, "high");
       image.alt = card.name || "Pokémon-Karte";
       image.onerror = () => handleDetailImageError(entry);
     }
@@ -1005,6 +1009,12 @@
     const base = normalizeImageBase(value);
     if (!/^https?:\/\//i.test(base)) return "";
     return `${base}/${quality}.webp`;
+  }
+
+  function getStoredCardImageUrl(card, quality = "low") {
+    if (card?.scanImage && String(card.scanImage).startsWith("data:image/")) return card.scanImage;
+    if (card?.directImage && /^https?:\/\//i.test(String(card.image || ""))) return card.image;
+    return getCardImageUrl(card?.image, quality) || "icons/card-placeholder.svg";
   }
 
   function variantLabel(value) {
