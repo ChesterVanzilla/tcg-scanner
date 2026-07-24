@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.8.1";
+const APP_VERSION = "6.8.2";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -2371,19 +2371,6 @@ async function findCandidates(parsed, language) {
     }
   }
 
-  // Zweite, schlüssellose Rückfallebene: Pokémon TCG API. Sie liefert vor
-  // allem englische Datensätze und direkte Kartenbilder. Wir fragen sie nur ab,
-  // wenn TCGdex keinen Treffer geliefert hat, damit die kostenlosen Limits
-  // geschont werden.
-  if (candidateMap.size === 0) {
-    try {
-      const fallbackCards = await fetchPokemonTcgCandidates(parsed);
-      for (const card of fallbackCards) candidateMap.set(`pokemontcg:${card.id}`, card);
-    } catch (error) {
-      console.warn("Pokémon-TCG-API-Fallback nicht verfügbar:", error);
-    }
-  }
-
   let candidates = [...candidateMap.values()];
   const setMapEntries = await Promise.all(searchLanguages.map(async dataLanguage => {
     try { return [dataLanguage, await getSetsMap(dataLanguage)]; }
@@ -2406,7 +2393,19 @@ async function findCandidates(parsed, language) {
   const setCodes = parsed.setCodes.flatMap(setCodeVariants).filter(Boolean);
   if (setCodes.length) {
     const matching = candidates.filter(card => setCodes.some(code => setCodeMatchesCard(code, card)));
-    if (matching.length) candidates = matching;
+    if (matching.length) {
+      candidates = matching;
+    } else if (hasStrongSetIdentifier(parsed)) {
+      candidates = [];
+    }
+  }
+
+  if (candidates.length === 0) {
+    try {
+      candidates = await fetchPokemonTcgCandidates(parsed);
+    } catch (error) {
+      console.warn("Pokémon-TCG-API-Fallback nicht verfügbar:", error);
+    }
   }
 
   return candidates;
@@ -2444,16 +2443,33 @@ async function fetchPokemonTcgCandidates(parsed) {
       name: card.set.name || "Pokémon TCG API",
       cardCount: { official: card.set.printedTotal || null }
     } : null,
+    cardmarketUrl: normalizeExternalCardmarketUrl(card.cardmarket?.url),
     pricing: card.cardmarket?.prices ? { cardmarket: {
+      url: normalizeExternalCardmarketUrl(card.cardmarket?.url),
       trend: card.cardmarket.prices.trendPrice,
       low: card.cardmarket.prices.lowPrice,
       avg30: card.cardmarket.prices.avg30
-    }} : null
+    }} : (card.cardmarket?.url ? { cardmarket: { url: normalizeExternalCardmarketUrl(card.cardmarket.url) } } : null)
   }));
 }
 
 function escapePokemonQueryValue(value) {
   return String(value || "").trim().replace(/[\"\:]/g, " ").replace(/\s+/g, " ");
+}
+
+
+function normalizeExternalCardmarketUrl(value) {
+  const url = String(value || "").trim();
+  return /^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url) ? url : "";
+}
+
+function getCardmarketDirectUrl(card) {
+  return normalizeExternalCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || card?._cardmarketUrl || "");
+}
+
+function hasStrongSetIdentifier(parsed) {
+  const identifier = parsed?.identifiers?.[0];
+  return Boolean(identifier?.setCode && identifier?.number && Number(identifier?.reliability || 0) >= 0.72);
 }
 
 function cardImageUrl(card, quality = "low") {
@@ -2843,6 +2859,7 @@ function createProvisionalCard(parsed) {
     name: name || "Unbekannte Karte",
     localId: number,
     setId: setCode,
+    setCode,
     setName: setCode ? `${setCode} · vorläufig` : "Vorläufig erkannt",
     _dataLanguage: els.language.value || "de",
     _externalSource: "scan",
@@ -2879,7 +2896,7 @@ function renderProvisionalResult(card, parsed) {
   market.className = "cardmarket-button";
   market.target = "_blank";
   market.rel = "noopener noreferrer";
-  market.href = buildCardmarketSearchUrl(buildParsedSearchQuery(parsed));
+  market.href = buildCardmarketUrl(card, parsed, true);
   market.textContent = "Auf Cardmarket prüfen";
   actions.append(market);
 
@@ -2939,12 +2956,12 @@ function buildPriceBox(pricing) {
 }
 
 function buildCardmarketUrl(card, parsed, precise) {
-  // Cardmarket findet Pokémon-Karten am stabilsten über Kartenname plus
-  // Sammlernummer. Interne TCGdex-Set-IDs werden nicht mitgesendet, weil die
-  // Plattform andere Setkürzel verwenden kann.
-  const queryParts = precise
-    ? [card.name, normalizeCollectorNumber(card.localId || "")]
-    : [card.name];
+  const directUrl = getCardmarketDirectUrl(card);
+  if (precise && directUrl) return directUrl;
+  const setCode = parsed?.identifiers?.[0]?.setCode || card?.setCode || card?.setId || "";
+  const number = normalizeCollectorNumber(card?.localId || parsed?.identifiers?.[0]?.number || "");
+  const compactIdentifier = [String(setCode).toUpperCase(), number].filter(Boolean).join("");
+  const queryParts = precise ? [card?.name, compactIdentifier || number] : [card?.name, setCode, number];
   return buildCardmarketSearchUrl(queryParts.filter(Boolean).join(" "));
 }
 

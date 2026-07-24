@@ -4,6 +4,7 @@
   const DB_NAME = "carddex-ai";
   const DB_VERSION = 1;
   const API_BASE = "https://api.tcgdex.net/v2";
+  const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
   const DEFAULT_COLLECTION_ID = "default-collection";
   const ACTIVE_COLLECTION_KEY = "carddex-v67-active-collection";
   const BACKUP_VERSION = 2;
@@ -234,6 +235,8 @@
       types: Array.isArray(card.types) ? card.types : [],
       variants: card.variants || null,
       pricing: card.pricing || null,
+      cardmarketUrl: normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || ""),
+      englishName: card.englishName || "",
       detailsFetchedAt: card.detailsFetchedAt || "",
       updatedAt: new Date().toISOString()
     };
@@ -759,7 +762,13 @@
   function updateCardmarketDetailLink(card) {
     const link = $("#detailCardmarketLink");
     if (!link) return;
-    const query = [card.name, card.setName, card.localId].filter(Boolean).join(" ");
+    const direct = normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || "");
+    if (direct) {
+      link.href = direct;
+      return;
+    }
+    const compactIdentifier = [String(card.setId || "").toUpperCase(), String(card.localId || "")].filter(Boolean).join("");
+    const query = [card.englishName || card.name, compactIdentifier || card.localId].filter(Boolean).join(" ");
     link.href = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(query)}`;
   }
 
@@ -839,16 +848,28 @@
 
       let imageSource = primary;
       let imageLanguage = primaryLanguage;
-      if ((!primary?.image || forceEnglishImage) && primaryLanguage !== "en") {
-        const english = await fetchEnglishCardFallback(cardId, existing, primary).catch(() => null);
-        if (english?.image) {
-          imageSource = english;
+      let englishCard = null;
+      if ((!primary?.image || forceEnglishImage || !existing?.cardmarketUrl) && primaryLanguage !== "en") {
+        englishCard = await fetchEnglishCardFallback(cardId, existing, primary).catch(() => null);
+        if (englishCard?.image && (!primary?.image || forceEnglishImage)) {
+          imageSource = englishCard;
           imageLanguage = "en";
         }
+      } else if (primaryLanguage === "en") {
+        englishCard = primary;
       }
 
-      if (!primary && !imageSource) throw new Error("Kartendaten nicht gefunden");
-      const merged = mergeCardData(existing, primary || imageSource, primaryLanguage || imageLanguage, imageSource, imageLanguage);
+      const pokemonFallback = await fetchPokemonApiFallback(existing, primary, englishCard).catch(() => null);
+      if (pokemonFallback?.image && (!imageSource?.image || forceEnglishImage)) {
+        imageSource = pokemonFallback;
+        imageLanguage = "en";
+      }
+
+      if (!primary && !imageSource && !pokemonFallback) throw new Error("Kartendaten nicht gefunden");
+      const merged = mergeCardData(existing, primary || imageSource || pokemonFallback, primaryLanguage || imageLanguage || "en", imageSource || pokemonFallback, imageLanguage || "en");
+      if (pokemonFallback?.cardmarketUrl) merged.cardmarketUrl = pokemonFallback.cardmarketUrl;
+      if (pokemonFallback?.englishName) merged.englishName = pokemonFallback.englishName;
+      if (pokemonFallback?.pricing) merged.pricing = mergePricing(merged.pricing, pokemonFallback.pricing);
       await putCard(merged);
       return merged;
     })().finally(() => cardFetchPromises.delete(cacheKey));
@@ -876,6 +897,70 @@
     return card?.id ? card : byId;
   }
 
+  async function fetchPokemonApiFallback(existing, primary, englishCard) {
+    const number = String(primary?.localId || existing?.localId || "").trim();
+    const englishName = String(englishCard?.name || "").trim();
+    if (!number) return null;
+    const cleanNumber = number.replace(/["\:]/g, " ");
+    const cleanName = englishName.replace(/["\:]/g, " ");
+    const q = englishName ? `number:${cleanNumber} name:${cleanName}*` : `number:${cleanNumber}`;
+    let params = new URLSearchParams({ q, pageSize: "20" });
+    let response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
+    let payload = response.ok ? await response.json() : null;
+    let cards = Array.isArray(payload?.data) ? payload.data : [];
+    if (!cards.length && englishName) {
+      params = new URLSearchParams({ q: `number:${cleanNumber}`, pageSize: "50" });
+      response = await fetch(`${POKEMON_TCG_API}/cards?${params.toString()}`, { cache: "no-store" });
+      payload = response.ok ? await response.json() : null;
+      cards = Array.isArray(payload?.data) ? payload.data : [];
+    }
+    if (!cards.length) return null;
+    const normalizedEnglish = normalizeComparableText(englishName);
+    const best = cards.map(card => ({ card, score: pokemonFallbackScore(card, existing, normalizedEnglish) }))
+      .sort((a, b) => b.score - a.score)[0]?.card;
+    if (!best) return null;
+    return {
+      id: existing?.id || `ptcg-${best.id}`,
+      name: existing?.name || best.name,
+      englishName: best.name || englishName,
+      localId: String(best.number || number),
+      image: best.images?.large || best.images?.small || "",
+      _directImage: true,
+      cardmarketUrl: normalizeCardmarketUrl(best.cardmarket?.url),
+      pricing: best.cardmarket?.prices ? { cardmarket: {
+        url: normalizeCardmarketUrl(best.cardmarket?.url),
+        trend: best.cardmarket.prices.trendPrice,
+        low: best.cardmarket.prices.lowPrice,
+        avg30: best.cardmarket.prices.avg30
+      }} : null
+    };
+  }
+
+  function pokemonFallbackScore(card, existing, normalizedEnglish) {
+    let score = 0;
+    if (String(card.number || "").replace(/^0+/, "") === String(existing?.localId || "").replace(/^0+/, "")) score += 100;
+    if (normalizedEnglish && normalizeComparableText(card.name) === normalizedEnglish) score += 120;
+    const setText = normalizeComparableText(`${card.set?.id || ""} ${card.set?.name || ""}`);
+    const existingSet = normalizeComparableText(`${existing?.setId || ""} ${existing?.setName || ""}`);
+    if (existingSet && setText && (setText.includes(existingSet) || existingSet.includes(setText))) score += 80;
+    return score;
+  }
+
+  function normalizeComparableText(value) {
+    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  function normalizeCardmarketUrl(value) {
+    const url = String(value || "").trim();
+    return /^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url) ? url : "";
+  }
+
+  function mergePricing(current, fallback) {
+    if (!current) return fallback || null;
+    if (!fallback) return current;
+    return { ...fallback, ...current, cardmarket: { ...(fallback.cardmarket || {}), ...(current.cardmarket || {}) } };
+  }
+
   function mergeCardData(existing, primary, primaryLanguage, imageSource, imageLanguage) {
     const normalizedPrimary = normalizeCard({ ...primary, _dataLanguage: primaryLanguage });
     return {
@@ -890,6 +975,7 @@
       setName: primary?.set?.name || existing?.setName || normalizedPrimary.setName,
       officialTotal: primary?.set?.cardCount?.official || existing?.officialTotal || normalizedPrimary.officialTotal,
       image: normalizeImageBase(imageSource?.image || primary?.image || existing?.image || ""),
+      directImage: Boolean(imageSource?._directImage || imageSource?.directImage || existing?.directImage),
       imageLanguage: imageLanguage || primaryLanguage || existing?.imageLanguage || "",
       rarity: primary?.rarity || existing?.rarity || "",
       category: primary?.category || existing?.category || "",
