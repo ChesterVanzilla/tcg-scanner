@@ -716,7 +716,7 @@
     setDetailLoading(true, "Alternatives Kartenbild wird gesucht …");
     try {
       const updated = await repairCardData(entry.cardId, entry.language, true, true);
-      const imageUrl = getCardImageUrl(updated?.image, "high");
+      const imageUrl = getStoredCardImageUrl(updated, "high");
       if (!imageUrl) throw new Error("Kein alternatives Bild gefunden");
       if (image) {
         image.src = imageUrl;
@@ -768,7 +768,7 @@
       return;
     }
     const compactIdentifier = [String(card.setId || "").toUpperCase(), String(card.localId || "")].filter(Boolean).join("");
-    const query = [card.englishName || card.name, compactIdentifier || card.localId].filter(Boolean).join(" ");
+    const query = [card.englishName || card.name, card.setName, compactIdentifier || card.localId].filter(Boolean).join(" ");
     link.href = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(query)}`;
   }
 
@@ -870,8 +870,13 @@
       if (pokemonFallback?.cardmarketUrl) merged.cardmarketUrl = pokemonFallback.cardmarketUrl;
       if (pokemonFallback?.englishName) merged.englishName = pokemonFallback.englishName;
       if (pokemonFallback?.pricing) merged.pricing = mergePricing(merged.pricing, pokemonFallback.pricing);
-      await putCard(merged);
-      return merged;
+
+      // Eine parallel laufende Reparatur darf ein bereits erfolgreich gespeichertes
+      // Direktbild oder einen Cardmarket-Link nicht wieder mit älteren Daten überschreiben.
+      const latest = await getCard(cardId);
+      const durable = preserveBestExternalData(latest, merged);
+      await putCard(durable);
+      return durable;
     })().finally(() => cardFetchPromises.delete(cacheKey));
 
     cardFetchPromises.set(cacheKey, promise);
@@ -952,13 +957,40 @@
 
   function normalizeCardmarketUrl(value) {
     const url = String(value || "").trim();
-    return /^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url) ? url : "";
+    if (/^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url)) return url;
+    if (/^https:\/\/prices\.pokemontcg\.io\/cardmarket\/[a-z0-9-]+(?:\?.*)?$/i.test(url)) return url;
+    return "";
   }
 
   function mergePricing(current, fallback) {
     if (!current) return fallback || null;
     if (!fallback) return current;
     return { ...fallback, ...current, cardmarket: { ...(fallback.cardmarket || {}), ...(current.cardmarket || {}) } };
+  }
+
+  function preserveBestExternalData(latest, candidate) {
+    if (!latest) return candidate;
+    const latestDirect = isDirectImageUrl(latest.image) || Boolean(latest.directImage);
+    const candidateDirect = isDirectImageUrl(candidate.image) || Boolean(candidate.directImage);
+    const result = { ...candidate };
+
+    if (latestDirect && !candidateDirect) {
+      result.image = latest.image;
+      result.directImage = true;
+      result.imageLanguage = latest.imageLanguage || result.imageLanguage;
+    }
+
+    const latestMarket = normalizeCardmarketUrl(latest.cardmarketUrl || latest.pricing?.cardmarket?.url || "");
+    const candidateMarket = normalizeCardmarketUrl(result.cardmarketUrl || result.pricing?.cardmarket?.url || "");
+    if (!candidateMarket && latestMarket) result.cardmarketUrl = latestMarket;
+
+    result.pricing = mergePricing(result.pricing, latest.pricing);
+    result.englishName = result.englishName || latest.englishName || "";
+    return result;
+  }
+
+  function isDirectImageUrl(value) {
+    return /^https?:\/\/.+\.(?:webp|png|jpe?g)(?:\?.*)?$/i.test(String(value || ""));
   }
 
   function mergeCardData(existing, primary, primaryLanguage, imageSource, imageLanguage) {
@@ -974,8 +1006,15 @@
       setId: primary?.set?.id || existing?.setId || normalizedPrimary.setId,
       setName: primary?.set?.name || existing?.setName || normalizedPrimary.setName,
       officialTotal: primary?.set?.cardCount?.official || existing?.officialTotal || normalizedPrimary.officialTotal,
-      image: normalizeImageBase(imageSource?.image || primary?.image || existing?.image || ""),
-      directImage: Boolean(imageSource?._directImage || imageSource?.directImage || existing?.directImage),
+      image: normalizeImageBase(
+        (existing?.directImage && isDirectImageUrl(existing?.image) && !(imageSource?._directImage || imageSource?.directImage)
+          ? existing.image
+          : (imageSource?.image || primary?.image || existing?.image || ""))
+      ),
+      directImage: Boolean(
+        (existing?.directImage && isDirectImageUrl(existing?.image)) ||
+        imageSource?._directImage || imageSource?.directImage || isDirectImageUrl(imageSource?.image)
+      ),
       imageLanguage: imageLanguage || primaryLanguage || existing?.imageLanguage || "",
       rarity: primary?.rarity || existing?.rarity || "",
       category: primary?.category || existing?.category || "",
@@ -1099,7 +1138,7 @@
 
   function getStoredCardImageUrl(card, quality = "low") {
     if (card?.scanImage && String(card.scanImage).startsWith("data:image/")) return card.scanImage;
-    if (card?.directImage && /^https?:\/\//i.test(String(card.image || ""))) return card.image;
+    if ((card?.directImage || isDirectImageUrl(card?.image)) && /^https?:\/\//i.test(String(card.image || ""))) return card.image;
     return getCardImageUrl(card?.image, quality) || "icons/card-placeholder.svg";
   }
 

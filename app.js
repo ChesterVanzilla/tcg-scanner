@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.8.2";
+const APP_VERSION = "6.8.3";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -2460,7 +2460,9 @@ function escapePokemonQueryValue(value) {
 
 function normalizeExternalCardmarketUrl(value) {
   const url = String(value || "").trim();
-  return /^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url) ? url : "";
+  if (/^https:\/\/(?:www\.)?cardmarket\.com\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(url)) return url;
+  if (/^https:\/\/prices\.pokemontcg\.io\/cardmarket\/[a-z0-9-]+(?:\?.*)?$/i.test(url)) return url;
+  return "";
 }
 
 function getCardmarketDirectUrl(card) {
@@ -2961,7 +2963,9 @@ function buildCardmarketUrl(card, parsed, precise) {
   const setCode = parsed?.identifiers?.[0]?.setCode || card?.setCode || card?.setId || "";
   const number = normalizeCollectorNumber(card?.localId || parsed?.identifiers?.[0]?.number || "");
   const compactIdentifier = [String(setCode).toUpperCase(), number].filter(Boolean).join("");
-  const queryParts = precise ? [card?.name, compactIdentifier || number] : [card?.name, setCode, number];
+  const marketName = card?.englishName || card?.name;
+  const setName = card?.set?.name || card?._setBrief?.name || "";
+  const queryParts = precise ? [marketName, setName, compactIdentifier || number] : [marketName, setName, setCode, number];
   return buildCardmarketSearchUrl(queryParts.filter(Boolean).join(" "));
 }
 
