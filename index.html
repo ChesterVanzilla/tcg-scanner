@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=685" />
+  <link rel="stylesheet" href="styles.css?v=690" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.8.5</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.9</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -75,12 +75,68 @@
     </header>
 
     <nav class="app-navigation" role="tablist" aria-label="Hauptnavigation">
-      <button id="showScannerView" class="app-nav-button active" type="button" role="tab" aria-selected="true">SCAN</button>
-      <button id="showCollectionView" class="app-nav-button" type="button" role="tab" aria-selected="false">SAMMLUNG</button>
+      <button id="showDashboardView" class="app-nav-button active" type="button" role="tab" aria-selected="true">START</button>
+      <button id="showScannerView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SCAN</button>
+      <button id="showCollectionView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SAMMLUNG</button>
+      <button id="showHistoryView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">VERLAUF</button>
     </nav>
 
     <main>
-      <div id="scannerView">
+      <div id="dashboardView">
+        <section class="panel dashboard-hero-panel">
+          <div class="section-heading">
+            <div class="step-badge">69</div>
+            <div>
+              <p class="panel-kicker">LIBRARY-MODUS</p>
+              <h2>Dein CardDex auf einen Blick</h2>
+              <p>Sammlung, Scannerhistorie und Verifizierungsstatus werden lokal auf diesem Gerät zusammengeführt.</p>
+            </div>
+          </div>
+
+          <div class="dashboard-primary-stats" aria-label="Sammlungsübersicht">
+            <div><span>KARTEN GESAMT</span><strong id="dashboardTotalCards">0</strong><small>inklusive Mehrfachkarten</small></div>
+            <div><span>VERSCHIEDENE</span><strong id="dashboardUniqueCards">0</strong><small>eindeutige Karten</small></div>
+            <div><span>SAMMLUNGEN</span><strong id="dashboardCollectionCount">0</strong><small>lokale Bereiche</small></div>
+          </div>
+
+          <div class="dashboard-today-console">
+            <div class="dashboard-today-header">
+              <div><span>HEUTE GESCANNT</span><strong id="dashboardTodayScans">0</strong></div>
+              <div><span>VERIFIZIERT</span><strong id="dashboardVerifiedToday">0</strong></div>
+              <div><span>PRÜFEN</span><strong id="dashboardReviewToday">0</strong></div>
+            </div>
+            <div class="dashboard-verification-row">
+              <span>ERFOLGSQUOTE HEUTE</span>
+              <div class="dashboard-verification-track"><i id="dashboardVerificationBar"></i></div>
+              <strong id="dashboardVerificationRate">0 %</strong>
+            </div>
+          </div>
+
+          <div class="dashboard-quick-actions">
+            <button id="dashboardStartScanner" class="primary-button" type="button"><span class="button-icon camera-symbol" aria-hidden="true"></span>Live-Scanner starten</button>
+            <button class="secondary-button" type="button" data-carddex-view="collection">Sammlung öffnen</button>
+            <button class="secondary-button" type="button" data-carddex-view="history">Scannerhistorie</button>
+          </div>
+        </section>
+
+        <section class="panel dashboard-panel">
+          <div class="dashboard-section-heading">
+            <div><p class="panel-kicker">LETZTE AKTIVITÄT</p><h2>Letzte Scans</h2></div>
+            <button class="mini-system-button" type="button" data-carddex-view="history">Alle anzeigen</button>
+          </div>
+          <div id="dashboardRecentScans" class="dashboard-recent-list"></div>
+        </section>
+
+        <section class="panel dashboard-panel">
+          <div class="dashboard-section-heading">
+            <div><p class="panel-kicker">LOKALE DATENBANK</p><h2>Sammlungen</h2></div>
+            <button class="mini-system-button" type="button" data-carddex-view="collection">Verwalten</button>
+          </div>
+          <div id="dashboardCollections" class="dashboard-collection-list"></div>
+        </section>
+      </div>
+
+      <div id="scannerView" class="hidden">
       <section id="scanner-panel" class="panel intro-panel">
         <div class="section-heading compact-heading">
           <div class="step-badge">01</div>
@@ -238,12 +294,45 @@
           <div id="collectionCards" class="collection-cards"></div>
         </section>
       </div>
+
+      <div id="historyView" class="hidden">
+        <section class="panel history-panel">
+          <div class="section-heading">
+            <div class="step-badge">LOG</div>
+            <div>
+              <p class="panel-kicker">SCANNERHISTORIE</p>
+              <h2>Letzte Erkennungen</h2>
+              <p>Jeder Scan und jede manuelle Suche wird lokal protokolliert. Von hier kannst du Ergebnisse erneut prüfen oder direkt einer Sammlung zuordnen.</p>
+            </div>
+          </div>
+
+          <div class="history-stats">
+            <div><span>EINTRÄGE</span><strong id="historyTotalCount">0</strong></div>
+            <div><span>VERIFIZIERT</span><strong id="historyVerifiedCount">0</strong></div>
+            <div><span>PRÜFEN</span><strong id="historyReviewCount">0</strong></div>
+          </div>
+
+          <div class="history-toolbar">
+            <label>Status filtern
+              <select id="historyFilter">
+                <option value="all">Alle Einträge</option>
+                <option value="verified">Verifiziert</option>
+                <option value="provisional">Vorläufig erkannt</option>
+                <option value="review">Manuell prüfen</option>
+              </select>
+            </label>
+            <button id="clearHistoryButton" class="mini-system-button danger-button" type="button">Historie leeren</button>
+          </div>
+
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </div>
     </main>
 
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span>PERSONAL CARD ASSISTANT · v6.8.5</span>
+        <span>PERSONAL CARD ASSISTANT · v6.9 · LIBRARY</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -408,6 +497,8 @@
           <div><span><i class="status-light state-green"></i> Vintage & Galerie</span><strong>AKTIV</strong></div>
           <div><span><i class="status-light state-green"></i> Lokale OCR-Rückfallebene</span><strong>AKTIV</strong></div>
           <div><span><i class="status-light state-green"></i> Bildvergleich</span><strong>AKTIV</strong></div>
+          <div><span><i class="status-light state-green"></i> Library Engine</span><strong>AKTIV</strong></div>
+          <div><span><i class="status-light state-green"></i> Scannerhistorie</span><strong>LOKAL</strong></div>
         </div>
 
         <label class="setting-row toggle-row" for="debugToggle">
@@ -442,9 +533,9 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong>v6.8.5</strong></div>
+          <div><span>APP</span><strong>v6.9</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
-          <div><span>DATENBANK</span><strong>TCGdex</strong></div>
+          <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
         </div>
 
@@ -504,8 +595,11 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="collection.js?v=685" defer></script>
-  <script src="app.js?v=685" defer></script>
+  <script src="carddex-core.js?v=690" defer></script>
+  <script src="collection.js?v=690" defer></script>
+  <script src="library-engine.js?v=690" defer></script>
+  <script src="library-ui.js?v=690" defer></script>
+  <script src="app.js?v=690" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

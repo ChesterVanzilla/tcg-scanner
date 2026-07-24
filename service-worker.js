@@ -1,10 +1,13 @@
-const CACHE_NAME = "carddex-ai-v6-8-5";
+const CACHE_NAME = "carddex-ai-v6-9";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./carddex-core.js",
   "./app.js",
   "./collection.js",
+  "./library-engine.js",
+  "./library-ui.js",
   "./manifest.webmanifest",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
@@ -54,7 +57,7 @@ self.addEventListener("fetch", event => {
         return response;
       })
       .catch(async () => {
-        const cached = await caches.match(event.request);
+        const cached = await caches.match(event.request, { ignoreSearch: true });
         if (cached) return cached;
         if (event.request.mode === "navigate") return caches.match("./index.html");
         throw new Error("Nicht im Cache verfügbar");

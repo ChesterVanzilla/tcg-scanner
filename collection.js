@@ -2,12 +2,12 @@
 
 (() => {
   const DB_NAME = "carddex-ai";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const API_BASE = "https://api.tcgdex.net/v2";
   const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
   const DEFAULT_COLLECTION_ID = "default-collection";
   const ACTIVE_COLLECTION_KEY = "carddex-v67-active-collection";
-  const BACKUP_VERSION = 2;
+  const BACKUP_VERSION = 3;
   const CARD_DATA_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   const CARDMARKET_LINK_MIGRATION_KEY = "carddex-v685-cardmarket-link-migration";
 
@@ -84,9 +84,23 @@
           store.createIndex("collectionId", "collectionId", { unique: false });
           store.createIndex("cardId", "cardId", { unique: false });
         }
+        if (!db.objectStoreNames.contains("scanHistory")) {
+          const historyStore = db.createObjectStore("scanHistory", { keyPath: "id" });
+          historyStore.createIndex("createdAt", "createdAt", { unique: false });
+          historyStore.createIndex("status", "status", { unique: false });
+          historyStore.createIndex("cardId", "cardId", { unique: false });
+        }
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        resolve(db);
+      };
       request.onerror = () => reject(request.error || new Error("IndexedDB konnte nicht geöffnet werden"));
+      request.onblocked = () => reject(new Error("Die lokale Datenbank wird noch von einer alten App-Version verwendet."));
     });
     return dbPromise;
   }
@@ -422,23 +436,25 @@
 
   async function exportBackup() {
     const db = await openDatabase();
-    const tx = db.transaction(["collections", "cards", "entries"], "readonly");
+    const tx = db.transaction(["collections", "cards", "entries", "scanHistory"], "readonly");
     const done = transactionDone(tx);
-    const [collections, cards, entries] = await Promise.all([
+    const [collections, cards, entries, scanHistory] = await Promise.all([
       requestToPromise(tx.objectStore("collections").getAll()),
       requestToPromise(tx.objectStore("cards").getAll()),
-      requestToPromise(tx.objectStore("entries").getAll())
+      requestToPromise(tx.objectStore("entries").getAll()),
+      requestToPromise(tx.objectStore("scanHistory").getAll())
     ]);
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: "6.8.5",
+      appVersion: "6.9",
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,
       collections,
       cards,
-      entries
+      entries,
+      scanHistory
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -458,9 +474,9 @@
     }
     if (!confirm("Vorhandene Sammlungsdaten durch diese Sicherung ersetzen?")) return;
     const db = await openDatabase();
-    const tx = db.transaction(["collections", "cards", "entries"], "readwrite");
+    const tx = db.transaction(["collections", "cards", "entries", "scanHistory"], "readwrite");
     const done = transactionDone(tx);
-    for (const name of ["collections", "cards", "entries"]) tx.objectStore(name).clear();
+    for (const name of ["collections", "cards", "entries", "scanHistory"]) tx.objectStore(name).clear();
     backup.collections.forEach(item => tx.objectStore("collections").put(item));
     (backup.cards || []).forEach(item => tx.objectStore("cards").put(normalizeCard(item)));
     backup.entries.forEach(item => tx.objectStore("entries").put({
@@ -472,6 +488,7 @@
       notes: "",
       ...item
     }));
+    (backup.scanHistory || []).forEach(item => tx.objectStore("scanHistory").put(item));
     await done;
     activeCollectionId = backup.activeCollectionId || DEFAULT_COLLECTION_ID;
     localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId);
@@ -1133,20 +1150,17 @@
   async function refreshAll() {
     await renderCollectionSelectors();
     await renderCollection();
+    window.CardDexCore?.emit?.("collection-changed", { collectionId: activeCollectionId });
   }
 
   function switchView(view) {
-    const scannerView = $("#scannerView");
-    const collectionView = $("#collectionView");
-    const scannerButton = $("#showScannerView");
-    const collectionButton = $("#showCollectionView");
+    if (window.CardDexLibrary?.switchView) {
+      window.CardDexLibrary.switchView(view);
+      return;
+    }
     const showCollection = view === "collection";
-    scannerView?.classList.toggle("hidden", showCollection);
-    collectionView?.classList.toggle("hidden", !showCollection);
-    scannerButton?.classList.toggle("active", !showCollection);
-    collectionButton?.classList.toggle("active", showCollection);
-    scannerButton?.setAttribute("aria-selected", String(!showCollection));
-    collectionButton?.setAttribute("aria-selected", String(showCollection));
+    $("#scannerView")?.classList.toggle("hidden", showCollection);
+    $("#collectionView")?.classList.toggle("hidden", !showCollection);
     if (showCollection) renderCollection();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1166,8 +1180,6 @@
     populateSelectOptions($("#detailCondition"), CONDITION_OPTIONS);
     populateSelectOptions($("#detailVariant"), VARIANT_OPTIONS);
 
-    $("#showScannerView")?.addEventListener("click", () => switchView("scanner"));
-    $("#showCollectionView")?.addEventListener("click", () => switchView("collection"));
     $("#activeCollectionSelect")?.addEventListener("change", async event => {
       activeCollectionId = event.target.value;
       localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId);
@@ -1342,6 +1354,8 @@
     addCard,
     refresh: refreshAll,
     getActiveCollectionId: () => activeCollectionId,
+    getCollections,
+    getEntries,
     populateSelect: renderCollectionSelectors,
     switchView,
     openEntryDetail,

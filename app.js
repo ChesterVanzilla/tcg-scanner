@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.8.5";
+const APP_VERSION = "6.9";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -489,7 +489,10 @@ loadAppSettings();
 loadAiSettings();
 refreshStatusFromSettings();
 initializeBootSequence();
-window.CardDexCollections?.init?.();
+(async () => {
+  await window.CardDexCollections?.init?.();
+  await window.CardDexLibrary?.init?.();
+})().catch(error => console.error("CardDex konnte nicht vollständig initialisiert werden:", error));
 
 els.openScannerButton.addEventListener("click", openLiveScanner);
 els.closeScannerButton.addEventListener("click", closeLiveScanner);
@@ -544,6 +547,29 @@ if ("serviceWorker" in navigator) {
     }
   });
 }
+
+
+window.CardDexScanner = Object.freeze({
+  openLiveScanner,
+  manualSearch,
+  searchFromHistory(record) {
+    const recognition = record?.recognition || {};
+    const card = record?.card || {};
+    const name = recognition.name || card.name || "";
+    const number = recognition.number || card.localId || "";
+    const denominator = recognition.denominator || "";
+    const setCode = recognition.setCode || card.cardmarketSetCode || "";
+    els.manualName.value = name === "Unbekannte Karte" ? "" : name;
+    els.manualNumber.value = [setCode, `${number}${denominator ? `/${denominator}` : ""}`].filter(Boolean).join(" ").trim();
+    window.CardDexLibrary?.switchView?.("scanner", { instant: true });
+    const details = document.querySelector("#manualPanel details");
+    if (details) details.open = true;
+    setTimeout(() => {
+      document.querySelector("#manualPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (els.manualName.value || els.manualNumber.value) manualSearch();
+    }, 80);
+  }
+});
 
 async function openLiveScanner() {
   clearResults();
@@ -1489,6 +1515,7 @@ Lokale OCR ausgeführt: ${usedLocalOcr ? "ja" : "nein – KI-Ergebnis war ausrei
     const enriched = await enrichTopCandidates(ranked, els.language.value);
 
     renderResults(enriched, parsed);
+    await recordRecognitionHistory(enriched, parsed, "scan");
     setSyncSuccessState();
     setScanState(getAiEndpoint() ? "green" : "off", false, getAiEndpoint() ? "KI BEREIT" : "KI AUS");
     setProgress("Fertig", 100);
@@ -2320,6 +2347,7 @@ async function manualSearch() {
     setProgress("Preise werden geladen …", 90);
     const enriched = await enrichTopCandidates(ranked, els.language.value);
     renderResults(enriched, parsed);
+    await recordRecognitionHistory(enriched, parsed, "manual");
     setSyncSuccessState();
     setScanState(getAiEndpoint() ? "green" : "off", false, getAiEndpoint() ? "KI BEREIT" : "KI AUS");
     setProgress("Fertig", 100);
@@ -2836,6 +2864,128 @@ function compareCardDescriptors(a, b) {
   const footer = vectorCorrelation(a.footer, b.footer);
   const color = cosineSimilarity(a.color, b.color);
   return clamp01(full * 0.18 + art * 0.42 + footer * 0.30 + color * 0.10);
+}
+
+
+function createHistoryPreview(sourceCanvas) {
+  if (!sourceCanvas?.width || !sourceCanvas?.height) return "";
+  try {
+    const maxWidth = 320;
+    const scale = Math.min(1, maxWidth / sourceCanvas.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+    canvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    context.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.62);
+  } catch {
+    return "";
+  }
+}
+
+function snapshotCardForHistory(card, scanPreview = "") {
+  const source = card || {};
+  const set = source.set || null;
+  const brief = source._setBrief || null;
+  const provisional = source.verificationStatus === "provisional" || source._externalSource === "scan";
+  return {
+    id: String(source.id || `local-${Date.now()}`),
+    name: String(source.name || "Unbekannte Karte"),
+    localId: String(source.localId || ""),
+    setId: String(source.setId || set?.id || brief?.id || source.setCode || ""),
+    setName: String(source.setName || set?.name || brief?.name || (source.setCode ? `${source.setCode} · vorläufig` : "Set nicht angegeben")),
+    officialTotal: source.officialTotal || set?.cardCount?.official || brief?.cardCount?.official || null,
+    image: String(source.image || ""),
+    directImage: Boolean(source.directImage || source._directImage),
+    scanImage: provisional ? (scanPreview || source.scanImage || "") : "",
+    source: String(source.source || source._externalSource || "tcgdex"),
+    _externalSource: String(source._externalSource || source.source || "tcgdex"),
+    _dataLanguage: String(source._dataLanguage || source.dataLanguage || els.language.value || "de"),
+    verificationStatus: source.verificationStatus || "verified",
+    confidence: Number(source.confidence || 0),
+    rarity: String(source.rarity || ""),
+    category: String(source.category || ""),
+    illustrator: String(source.illustrator || ""),
+    hp: source.hp ?? null,
+    types: Array.isArray(source.types) ? source.types.slice(0, 4) : [],
+    variants: source.variants || null,
+    pricing: source.pricing || null,
+    cardmarketUrl: getCardmarketDirectUrl(source),
+    cardmarketSetCode: normalizeCardmarketSetCode(source.cardmarketSetCode || set?.ptcgoCode || ""),
+    pokemonTcgId: String(source.pokemonTcgId || ""),
+    englishName: String(source.englishName || ""),
+    set: set ? {
+      id: String(set.id || ""),
+      name: String(set.name || ""),
+      ptcgoCode: String(set.ptcgoCode || ""),
+      cardCount: { official: set.cardCount?.official || set.printedTotal || null }
+    } : null,
+    _setBrief: brief ? {
+      id: String(brief.id || ""),
+      name: String(brief.name || ""),
+      cardCount: { official: brief.cardCount?.official || null }
+    } : null
+  };
+}
+
+function historyConfidence(card, parsed, status) {
+  const ai = Number(parsed?.ai?.confidence || 0);
+  const image = Number(card?._imageScore || 0);
+  const cardConfidence = Number(card?.confidence || 0);
+  const values = [ai <= 1 ? ai * 100 : ai, image <= 1 ? image * 100 : image, cardConfidence <= 1 ? cardConfidence * 100 : cardConfidence]
+    .filter(value => Number.isFinite(value) && value > 0);
+  if (status === "verified") values.push(90);
+  if (!values.length) return status === "provisional" ? 65 : 0;
+  return Math.max(0, Math.min(100, Math.round(Math.max(...values))));
+}
+
+async function recordRecognitionHistory(cards, parsed, origin = "scan") {
+  const engine = window.CardDexLibraryEngine;
+  if (!engine?.recordScan) return null;
+  try {
+    const candidates = Array.isArray(cards) ? cards : [];
+    const top = candidates[0] || createProvisionalCard(parsed) || {
+      id: `local-unknown-${Date.now()}`,
+      name: "Unbekannte Karte",
+      localId: parsed?.identifiers?.[0]?.number || "",
+      setCode: parsed?.identifiers?.[0]?.setCode || "",
+      setName: "Manuelle Kontrolle erforderlich",
+      _dataLanguage: els.language.value || "de",
+      _externalSource: "scan",
+      verificationStatus: "provisional"
+    };
+    const second = candidates[1];
+    const margin = second ? Number(top._score || 0) - Number(second._score || 0) : Number(top._score || 0);
+    const status = candidates.length
+      ? (isConfidentTopMatch(top, margin, parsed) ? "verified" : "review")
+      : (top.name === "Unbekannte Karte" ? "review" : "provisional");
+    const identifier = parsed?.identifiers?.[0] || {};
+    const scanPreview = origin === "scan" ? createHistoryPreview(preparedCanvases[0]) : "";
+    const card = snapshotCardForHistory(top, scanPreview);
+    const marketUrl = buildCardmarketUrl(top, parsed || createEmptyParsed(), true);
+
+    return await engine.recordScan({
+      source: origin,
+      status,
+      confidence: historyConfidence(top, parsed, status),
+      candidateCount: candidates.length,
+      language: top._dataLanguage || els.language.value || "de",
+      card,
+      scanPreview,
+      cardmarketUrl: marketUrl,
+      recognition: {
+        name: parsed?.nameHints?.[0]?.value || parsed?.ai?.name || top.name || "",
+        number: identifier.number || parsed?.ai?.number || top.localId || "",
+        denominator: identifier.denominator || parsed?.ai?.denominator || "",
+        setCode: identifier.setCode || parsed?.ai?.setCode || top.cardmarketSetCode || top.setCode || "",
+        aiConfidence: Number(parsed?.ai?.confidence || 0),
+        origin
+      }
+    });
+  } catch (error) {
+    console.warn("Scannerhistorie konnte nicht gespeichert werden:", error);
+    return null;
+  }
 }
 
 function renderResults(cards, parsed) {
