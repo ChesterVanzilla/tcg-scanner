@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=670" />
+  <link rel="stylesheet" href="styles.css?v=680" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.7</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.8</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -208,7 +208,7 @@
             <div>
               <p class="panel-kicker">LOKALE DATENBANK</p>
               <h2 id="collectionTitle">Meine Sammlung</h2>
-              <p>Deine Karten werden sicher auf diesem Gerät gespeichert. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
+              <p>Deine Karten werden sicher auf diesem Gerät gespeichert. Tippe eine Karte an, um ihre Details zu bearbeiten. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
             </div>
           </div>
 
@@ -243,7 +243,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span>PERSONAL CARD ASSISTANT · v6.7</span>
+        <span>PERSONAL CARD ASSISTANT · v6.8</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -253,6 +253,84 @@
       <p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
     </footer>
   </div>
+
+  <div id="collectionDetailBackdrop" class="collection-detail-backdrop hidden" aria-hidden="true"></div>
+  <aside id="collectionDetailSheet" class="collection-detail-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="collectionDetailTitle" aria-hidden="true">
+    <div class="collection-detail-header">
+      <div>
+        <p>SAMMLUNGSDATENSATZ · <span id="detailCollectionName">SAMMLUNG</span></p>
+        <h2 id="collectionDetailTitle">Kartendetails</h2>
+        <span id="collectionDetailMeta">Set · Kartennummer</span>
+      </div>
+      <button id="closeCollectionDetailButton" class="collection-detail-close" type="button" aria-label="Kartendetails schließen">×</button>
+    </div>
+
+    <div class="collection-detail-content">
+      <section class="collection-detail-visual" aria-label="Kartenabbildung und Marktdaten">
+        <img id="collectionDetailImage" src="icons/card-placeholder.svg" alt="Pokémon-Karte">
+        <p id="detailImageStatus" class="collection-detail-status" role="status">Kartendaten werden geladen …</p>
+        <button id="retryCardImageButton" class="mini-system-button hidden" type="button">Kartenbild erneut suchen</button>
+        <div id="detailPriceSummary" class="detail-price-summary hidden" aria-label="Cardmarket-Preise"></div>
+        <a id="detailCardmarketLink" class="cardmarket-button collection-cardmarket-link" href="https://www.cardmarket.com/de/Pokemon/Products/Search" target="_blank" rel="noopener noreferrer">Auf Cardmarket suchen</a>
+      </section>
+
+      <form id="collectionDetailForm" class="collection-detail-form" autocomplete="off" onsubmit="return false;">
+        <div class="collection-detail-section">
+          <div class="collection-detail-section-title"><span>01</span><strong>SAMMLUNGSANGABEN</strong></div>
+          <div class="collection-detail-grid">
+            <label>
+              Kartensprache
+              <select id="detailLanguage"></select>
+            </label>
+            <label>
+              Variante
+              <select id="detailVariant"></select>
+            </label>
+            <label>
+              Zustand
+              <select id="detailCondition"></select>
+            </label>
+            <label>
+              Anzahl
+              <span class="detail-quantity-control">
+                <button id="detailQuantityMinus" type="button" aria-label="Anzahl verringern">−</button>
+                <input id="detailQuantity" type="number" min="1" step="1" inputmode="numeric" value="1">
+                <button id="detailQuantityPlus" type="button" aria-label="Anzahl erhöhen">+</button>
+              </span>
+            </label>
+            <label>
+              Kaufpreis in Euro
+              <input id="detailPurchasePrice" type="text" inputmode="decimal" placeholder="z. B. 12,50">
+            </label>
+            <label>
+              Kaufdatum
+              <input id="detailPurchaseDate" type="date">
+            </label>
+            <label class="collection-detail-notes">
+              Notizen
+              <textarea id="detailNotes" rows="4" maxlength="1000" placeholder="Eigene Angaben zur Karte …"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="collection-detail-section">
+          <div class="collection-detail-section-title"><span>02</span><strong>KARTENDATEN</strong></div>
+          <dl class="collection-card-data">
+            <div><dt>Seltenheit</dt><dd id="detailRarity">Nicht angegeben</dd></div>
+            <div><dt>Illustrator</dt><dd id="detailIllustrator">Nicht angegeben</dd></div>
+            <div><dt>Kategorie</dt><dd id="detailCategory">Nicht angegeben</dd></div>
+            <div><dt>Datenbank-ID</dt><dd id="detailCardId">–</dd></div>
+          </dl>
+        </div>
+
+        <div class="collection-detail-actions">
+          <button id="saveCollectionDetailButton" class="primary-button" type="button">Änderungen speichern</button>
+          <button id="cancelCollectionDetailButton" class="secondary-button" type="button">Abbrechen</button>
+          <button id="deleteCollectionEntryButton" class="mini-system-button danger-button" type="button">Karte aus Sammlung löschen</button>
+        </div>
+      </form>
+    </div>
+  </aside>
 
   <div id="settingsBackdrop" class="settings-backdrop" aria-hidden="true"></div>
   <aside id="settingsDrawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
@@ -364,7 +442,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong>v6.7</strong></div>
+          <div><span>APP</span><strong>v6.8</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>TCGdex</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -426,8 +504,8 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="collection.js?v=670" defer></script>
-  <script src="app.js?v=670" defer></script>
+  <script src="collection.js?v=680" defer></script>
+  <script src="app.js?v=680" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>
