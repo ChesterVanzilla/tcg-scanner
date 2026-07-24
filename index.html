@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=660" />
+  <link rel="stylesheet" href="styles.css?v=670" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.6</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.7</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -74,7 +74,13 @@
       </div>
     </header>
 
+    <nav class="app-navigation" role="tablist" aria-label="Hauptnavigation">
+      <button id="showScannerView" class="app-nav-button active" type="button" role="tab" aria-selected="true">SCAN</button>
+      <button id="showCollectionView" class="app-nav-button" type="button" role="tab" aria-selected="false">SAMMLUNG</button>
+    </nav>
+
     <main>
+      <div id="scannerView">
       <section id="scanner-panel" class="panel intro-panel">
         <div class="section-heading compact-heading">
           <div class="step-badge">01</div>
@@ -193,12 +199,51 @@
           </div>
         </details>
       </section>
+      </div>
+
+      <div id="collectionView" class="hidden">
+        <section class="panel collection-panel">
+          <div class="section-heading">
+            <div class="step-badge">DB</div>
+            <div>
+              <p class="panel-kicker">LOKALE DATENBANK</p>
+              <h2 id="collectionTitle">Meine Sammlung</h2>
+              <p>Deine Karten werden sicher auf diesem Gerät gespeichert. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
+            </div>
+          </div>
+
+          <div class="collection-toolbar">
+            <label>Aktive Sammlung
+              <select id="activeCollectionSelect"></select>
+            </label>
+            <div class="collection-toolbar-actions">
+              <button id="createCollectionButton" class="secondary-button" type="button">Neue Sammlung</button>
+              <button id="renameCollectionButton" class="mini-system-button" type="button">Umbenennen</button>
+              <button id="deleteCollectionButton" class="mini-system-button danger-button" type="button">Löschen</button>
+            </div>
+          </div>
+
+          <div class="collection-stats">
+            <div><span>KARTEN GESAMT</span><strong id="collectionTotalCount">0</strong></div>
+            <div><span>VERSCHIEDENE</span><strong id="collectionUniqueCount">0</strong></div>
+            <div><span>SPEICHER</span><strong>INDEXEDDB</strong></div>
+          </div>
+
+          <div class="backup-actions">
+            <button id="exportCollectionButton" class="secondary-button" type="button">JSON-Sicherung exportieren</button>
+            <button id="importCollectionButton" class="secondary-button" type="button">Sicherung importieren</button>
+            <input id="importCollectionInput" type="file" accept="application/json,.json" hidden>
+          </div>
+
+          <div id="collectionCards" class="collection-cards"></div>
+        </section>
+      </div>
     </main>
 
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span>PERSONAL CARD ASSISTANT · v6.6</span>
+        <span>PERSONAL CARD ASSISTANT · v6.7</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -319,7 +364,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong>v6.6</strong></div>
+          <div><span>APP</span><strong>v6.7</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>TCGdex</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -381,6 +426,8 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="app.js?v=660" defer></script>
+  <script src="collection.js?v=670" defer></script>
+  <script src="app.js?v=670" defer></script>
+  <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

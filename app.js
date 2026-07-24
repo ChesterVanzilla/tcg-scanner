@@ -3,13 +3,13 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.6";
+const APP_VERSION = "6.7";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
 const CARD_WIDTH = 750;
 const CARD_HEIGHT = 1050;
 const MAX_RESULTS = 8;
-const SETTING_PREFIX = "carddex-v66-";
+const SETTING_PREFIX = "carddex-v66-"; // Beibehalten, damit v6.6-Einstellungen übernommen werden.
 const SETTING_KEYS = {
   bootAnimation: `${SETTING_PREFIX}boot-animation`,
   rememberCamera: `${SETTING_PREFIX}remember-camera`,
@@ -488,6 +488,7 @@ loadAppSettings();
 loadAiSettings();
 refreshStatusFromSettings();
 initializeBootSequence();
+window.CardDexCollections?.init?.();
 
 els.openScannerButton.addEventListener("click", openLiveScanner);
 els.closeScannerButton.addEventListener("click", closeLiveScanner);
@@ -2708,11 +2709,40 @@ function renderResults(cards, parsed) {
     fallbackLink.href = buildCardmarketUrl(card, parsed, false);
 
     actions.append(primaryLink, fallbackLink);
+
+    const collectionActions = document.createElement("div");
+    collectionActions.className = "collection-action-block";
+    const collectionSelect = document.createElement("select");
+    collectionSelect.className = "result-collection-select";
+    collectionSelect.setAttribute("aria-label", "Zielsammlung auswählen");
+    const addCollectionButton = document.createElement("button");
+    addCollectionButton.className = "add-collection-button";
+    addCollectionButton.type = "button";
+    addCollectionButton.textContent = "Zur Sammlung hinzufügen";
+    addCollectionButton.addEventListener("click", async () => {
+      addCollectionButton.disabled = true;
+      try {
+        await window.CardDexCollections?.addCard?.(card, {
+          collectionId: collectionSelect.value || window.CardDexCollections?.getActiveCollectionId?.(),
+          language: card._dataLanguage || els.language.value || "de"
+        });
+        addCollectionButton.textContent = "Hinzugefügt ✓";
+        setTimeout(() => { addCollectionButton.textContent = "Erneut hinzufügen"; }, 1300);
+      } catch (error) {
+        console.error(error);
+        addCollectionButton.textContent = "Speichern fehlgeschlagen";
+      } finally {
+        addCollectionButton.disabled = false;
+      }
+    });
+    collectionActions.append(collectionSelect, addCollectionButton);
+
     info.append(title, badges, meta);
     if (priceBox) info.append(priceBox);
-    info.append(actions);
+    info.append(actions, collectionActions);
     article.append(image, info);
     els.results.append(article);
+    window.CardDexCollections?.populateSelect?.();
   });
 
   els.resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });

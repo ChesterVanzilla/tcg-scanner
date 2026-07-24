@@ -2272,3 +2272,26 @@ body.drawer-open .app-shell {
 .status-light.state-green { color: var(--green) !important; background: var(--green) !important; border-color: #154a19 !important; box-shadow: 0 0 0 2px rgba(255,255,255,.2), 0 0 10px rgba(76,175,80,.75) !important; }
 .status-light.state-red { color: var(--red) !important; background: var(--red) !important; border-color: #64110f !important; box-shadow: 0 0 0 2px rgba(255,255,255,.18), 0 0 10px rgba(229,57,53,.8) !important; }
 .status-light.state-amber { color: var(--amber) !important; background: var(--amber) !important; border-color: #6b5000 !important; box-shadow: 0 0 0 2px rgba(255,255,255,.18), 0 0 10px rgba(255,196,67,.8) !important; }
+
+/* ============================================================
+   CardDex AI v6.7 – Sammlungen
+   ============================================================ */
+.app-navigation{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 18px;padding:6px;border:2px solid #343a35;background:#171a18;box-shadow:inset 0 0 0 2px #080a09}
+.app-nav-button{min-height:48px;border:1px solid #4a514b;background:#242925;color:#abb3ac;font:800 .8rem/1 monospace;letter-spacing:.12em;cursor:pointer}
+.app-nav-button.active{background:#9e2d2a;color:#fff;border-color:#df5b54;box-shadow:inset 0 -4px 0 #6f1818}
+.collection-panel{min-height:55vh}
+.collection-toolbar{display:grid;gap:12px;margin:18px 0;padding:14px;border:1px solid #3f4740;background:#171b18}
+.collection-toolbar label{display:grid;gap:7px;color:#aeb7af;font:700 .72rem monospace;letter-spacing:.08em}
+.collection-toolbar select{width:100%;min-height:44px}
+.collection-toolbar-actions,.backup-actions{display:flex;gap:8px;flex-wrap:wrap}
+.collection-toolbar-actions>*{flex:1 1 130px}.backup-actions{margin:14px 0 18px}.backup-actions>*{flex:1 1 220px}
+.collection-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.collection-stats div{padding:12px 8px;border:1px solid #475048;background:#111411;text-align:center}
+.collection-stats span{display:block;color:#89928b;font:700 .58rem monospace;letter-spacing:.08em}.collection-stats strong{display:block;margin-top:7px;color:#d7e6d8;font:900 1.15rem monospace}
+.collection-cards{display:grid;gap:10px}.collection-card{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:1px solid #414941;background:linear-gradient(135deg,#1c211d,#121512)}
+.collection-card>img{width:72px;aspect-ratio:5/7;object-fit:cover;border-radius:4px;background:#080a09}.collection-card-info{min-width:0}.collection-card-info h3{margin:0 0 5px;color:#edf5ee;font-size:1rem}.collection-card-info p{margin:0;color:#a6afa8;font-size:.74rem}.collection-card-tags{display:flex;gap:5px;margin-top:8px}.collection-card-tags span{padding:3px 6px;border:1px solid #4d574e;color:#b9c5bb;font:700 .58rem monospace}
+.quantity-control{display:grid;grid-template-columns:34px 38px 34px;align-items:center;border:1px solid #4a534b}.quantity-control button{height:38px;border:0;background:#2b312c;color:#fff;font-size:1.2rem;cursor:pointer}.quantity-control strong{text-align:center;font:900 .9rem monospace;color:#d6e6d8}
+.collection-empty{padding:42px 18px;border:1px dashed #465047;text-align:center;color:#929d94}.collection-empty strong{display:block;color:#cbd8cd;font:800 .78rem monospace;letter-spacing:.08em}.collection-empty p{margin:10px auto 0;max-width:420px}
+.collection-action-block{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}.result-collection-select{min-width:0}.add-collection-button{border:1px solid #6d854f;background:#344629;color:#eaf6df;font-weight:800;padding:10px 12px;cursor:pointer}.add-collection-button:disabled{opacity:.6;cursor:wait}
+.collection-toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));z-index:1100;max-width:min(90vw,520px);padding:12px 16px;transform:translate(-50%,130%);opacity:0;border:1px solid #76955b;background:#1d2b18;color:#e8f4e2;box-shadow:0 8px 28px #0009;font:700 .75rem monospace;text-align:center;transition:.22s ease}.collection-toast.show{transform:translate(-50%,0);opacity:1}.collection-toast.error{border-color:#c34b46;background:#3a1715;color:#ffd5d2}
+@media(max-width:620px){.collection-stats{grid-template-columns:1fr 1fr}.collection-stats div:last-child{grid-column:1/-1}.collection-card{grid-template-columns:58px minmax(0,1fr)}.collection-card>img{width:58px}.quantity-control{grid-column:1/-1;justify-self:end}.collection-action-block{grid-template-columns:1fr}.add-collection-button{min-height:42px}}

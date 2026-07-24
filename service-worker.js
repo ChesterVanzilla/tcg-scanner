@@ -1,9 +1,10 @@
-const CACHE_NAME = "carddex-ai-v6-6";
+const CACHE_NAME = "carddex-ai-v6-7";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./collection.js",
   "./manifest.webmanifest",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
