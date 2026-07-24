@@ -10,6 +10,10 @@
   const BACKUP_VERSION = 3;
   const CARD_DATA_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   const CARDMARKET_LINK_MIGRATION_KEY = "carddex-v685-cardmarket-link-migration";
+  const COLLECTION_VIEW_KEY = "carddex-v610-collection-view";
+  const COLLECTION_FILTER_VALUES = new Set(["all", "duplicates", "single", "verified", "provisional", "review", "notes", "purchase"]);
+  const COLLECTION_SORT_VALUES = new Set(["name-asc", "name-desc", "set-number", "quantity-desc", "newest", "purchase-desc"]);
+  const collectionCollator = new Intl.Collator("de", { sensitivity: "base", numeric: true });
 
   const LANGUAGE_OPTIONS = [
     ["de", "Deutsch"],
@@ -49,6 +53,8 @@
   let collectionRenderToken = 0;
   const cardFetchPromises = new Map();
   const imageRepairAttempts = new Set();
+  let collectionViewState = loadCollectionViewState();
+  let collectionSearchTimer = null;
 
   const $ = selector => document.querySelector(selector);
 
@@ -523,6 +529,171 @@
     });
   }
 
+  function loadCollectionViewState() {
+    const fallback = { query: "", filter: "all", language: "all", sort: "name-asc" };
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLLECTION_VIEW_KEY) || "null");
+      if (!saved || typeof saved !== "object") return fallback;
+      return {
+        query: String(saved.query || "").slice(0, 120),
+        filter: COLLECTION_FILTER_VALUES.has(saved.filter) ? saved.filter : "all",
+        language: /^[a-z]{2}$/i.test(String(saved.language || "")) ? String(saved.language).toLowerCase() : "all",
+        sort: COLLECTION_SORT_VALUES.has(saved.sort) ? saved.sort : "name-asc"
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveCollectionViewState() {
+    try {
+      localStorage.setItem(COLLECTION_VIEW_KEY, JSON.stringify(collectionViewState));
+    } catch {
+      // Die Sortier- und Filtereinstellungen sind nicht kritisch.
+    }
+  }
+
+  function normalizeSearchValue(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("de")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function getEntryVerificationStatus(entry) {
+    const value = String(entry?.card?.verificationStatus || "verified").toLowerCase();
+    if (value === "provisional") return "provisional";
+    if (value === "review") return "review";
+    return "verified";
+  }
+
+  function getCollectionSearchHaystack(entry) {
+    const card = entry.card || {};
+    return normalizeSearchValue([
+      card.name,
+      card.englishName,
+      card.setName,
+      card.setId,
+      card.localId,
+      card.officialTotal,
+      card.rarity,
+      card.category,
+      card.illustrator,
+      entry.language,
+      variantLabel(entry.variant),
+      entry.condition,
+      entry.notes
+    ].filter(Boolean).join(" "));
+  }
+
+  function entryMatchesCollectionFilter(entry) {
+    const quantity = Math.max(1, Number(entry.quantity || 1));
+    const status = getEntryVerificationStatus(entry);
+    switch (collectionViewState.filter) {
+      case "duplicates": return quantity > 1;
+      case "single": return quantity === 1;
+      case "verified": return status === "verified";
+      case "provisional": return status === "provisional";
+      case "review": return status === "review";
+      case "notes": return Boolean(String(entry.notes || "").trim());
+      case "purchase": return entry.purchasePrice !== null && entry.purchasePrice !== "" && Number.isFinite(Number(entry.purchasePrice));
+      default: return true;
+    }
+  }
+
+  function compareCollectionEntries(a, b) {
+    const cardA = a.card || {};
+    const cardB = b.card || {};
+    const nameCompare = collectionCollator.compare(cardA.name || "", cardB.name || "");
+    switch (collectionViewState.sort) {
+      case "name-desc": return -nameCompare;
+      case "set-number": {
+        const setCompare = collectionCollator.compare(cardA.setName || cardA.setId || "", cardB.setName || cardB.setId || "");
+        if (setCompare) return setCompare;
+        const numberCompare = collectionCollator.compare(cardA.localId || "", cardB.localId || "");
+        return numberCompare || nameCompare;
+      }
+      case "quantity-desc": {
+        const quantityCompare = Number(b.quantity || 1) - Number(a.quantity || 1);
+        return quantityCompare || nameCompare;
+      }
+      case "newest": {
+        const dateCompare = (Date.parse(b.updatedAt || b.createdAt || "") || 0) - (Date.parse(a.updatedAt || a.createdAt || "") || 0);
+        return dateCompare || nameCompare;
+      }
+      case "purchase-desc": {
+        const priceA = a.purchasePrice !== null && a.purchasePrice !== "" && Number.isFinite(Number(a.purchasePrice)) ? Number(a.purchasePrice) : -1;
+        const priceB = b.purchasePrice !== null && b.purchasePrice !== "" && Number.isFinite(Number(b.purchasePrice)) ? Number(b.purchasePrice) : -1;
+        return priceB - priceA || nameCompare;
+      }
+      default: return nameCompare;
+    }
+  }
+
+  function filterAndSortCollectionEntries(entries) {
+    const terms = normalizeSearchValue(collectionViewState.query).split(/\s+/).filter(Boolean);
+    return entries
+      .filter(entry => collectionViewState.language === "all" || String(entry.language || "de").toLowerCase() === collectionViewState.language)
+      .filter(entryMatchesCollectionFilter)
+      .filter(entry => {
+        if (!terms.length) return true;
+        const haystack = getCollectionSearchHaystack(entry);
+        return terms.every(term => haystack.includes(term));
+      })
+      .sort(compareCollectionEntries);
+  }
+
+  function syncCollectionOrganizerControls(entries, visibleEntries) {
+    const search = $("#collectionSearchInput");
+    const clear = $("#clearCollectionSearchButton");
+    const filter = $("#collectionFilterSelect");
+    const language = $("#collectionLanguageFilter");
+    const sort = $("#collectionSortSelect");
+    const summary = $("#collectionFilterSummary");
+
+    if (search && search.value !== collectionViewState.query) search.value = collectionViewState.query;
+    if (clear) clear.classList.toggle("visible", Boolean(collectionViewState.query));
+    if (filter) filter.value = collectionViewState.filter;
+    if (sort) sort.value = collectionViewState.sort;
+
+    if (language) {
+      const selected = collectionViewState.language;
+      const available = new Set(entries.map(entry => String(entry.language || "de").toLowerCase()));
+      language.innerHTML = '<option value="all">Alle Sprachen</option>';
+      LANGUAGE_OPTIONS.forEach(([value, label]) => {
+        if (!available.has(value) && value !== selected) return;
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        language.append(option);
+      });
+      language.value = [...language.options].some(option => option.value === selected) ? selected : "all";
+      if (language.value !== selected) collectionViewState.language = "all";
+    }
+
+    document.querySelectorAll("[data-collection-filter]").forEach(button => {
+      const active = button.dataset.collectionFilter === collectionViewState.filter;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+
+    if (summary) {
+      const visibleQuantity = visibleEntries.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+      const hasFilter = Boolean(collectionViewState.query) || collectionViewState.filter !== "all" || collectionViewState.language !== "all";
+      summary.textContent = hasFilter
+        ? `${visibleEntries.length} von ${entries.length} verschiedenen Karten · ${visibleQuantity} Exemplare sichtbar.`
+        : `${entries.length} verschiedene Karten · ${visibleQuantity} Exemplare in dieser Sammlung.`;
+    }
+  }
+
+  function resetCollectionOrganizer() {
+    collectionViewState = { query: "", filter: "all", language: "all", sort: "name-asc" };
+    saveCollectionViewState();
+    void renderCollection({ skipRepair: true });
+  }
+
   async function renderCollection(options = {}) {
     const container = $("#collectionCards");
     if (!container) return;
@@ -534,12 +705,18 @@
     localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId);
     const entries = await getEntries(activeCollectionId);
     if (renderToken !== collectionRenderToken) return;
+
+    const visibleEntries = filterAndSortCollectionEntries(entries);
     const total = entries.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const duplicateCount = entries.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 1) - 1), 0);
     $("#collectionTitle").textContent = current.name;
     $("#collectionTotalCount").textContent = String(total);
     $("#collectionUniqueCount").textContent = String(entries.length);
+    if ($("#collectionDuplicateCount")) $("#collectionDuplicateCount").textContent = String(duplicateCount);
+    if ($("#collectionVisibleCount")) $("#collectionVisibleCount").textContent = String(visibleEntries.length);
     $("#activeCollectionSelect").value = activeCollectionId;
     $("#deleteCollectionButton").disabled = current.isDefault;
+    syncCollectionOrganizerControls(entries, visibleEntries);
     container.innerHTML = "";
 
     if (!entries.length) {
@@ -547,7 +724,24 @@
       return;
     }
 
-    entries.forEach(entry => container.append(createCollectionCard(entry)));
+    if (!visibleEntries.length) {
+      const empty = document.createElement("div");
+      empty.className = "collection-empty collection-filter-empty";
+      const title = document.createElement("strong");
+      title.textContent = "KEINE PASSENDEN KARTEN";
+      const text = document.createElement("p");
+      text.textContent = "Ändere den Suchbegriff oder setze die Sammlungsfilter zurück.";
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "mini-system-button";
+      reset.textContent = "Filter zurücksetzen";
+      reset.addEventListener("click", resetCollectionOrganizer);
+      empty.append(title, text, reset);
+      container.append(empty);
+      return;
+    }
+
+    visibleEntries.forEach(entry => container.append(createCollectionCard(entry)));
     if (!options.skipRepair) void repairMissingCardData(entries, renderToken);
   }
 
@@ -580,6 +774,21 @@
       tag.textContent = value;
       tags.append(tag);
     });
+    const quantity = Math.max(1, Number(entry.quantity || 1));
+    if (quantity > 1) {
+      article.classList.add("has-duplicates");
+      const duplicateTag = document.createElement("span");
+      duplicateTag.className = "collection-duplicate-tag";
+      duplicateTag.textContent = `+${quantity - 1} DOPPELT`;
+      tags.append(duplicateTag);
+    }
+    const verificationStatus = getEntryVerificationStatus(entry);
+    if (verificationStatus !== "verified") {
+      const verificationTag = document.createElement("span");
+      verificationTag.className = verificationStatus === "review" ? "collection-review-tag" : "collection-provisional-tag";
+      verificationTag.textContent = verificationStatus === "review" ? "PRÜFEN" : "VORLÄUFIG";
+      tags.append(verificationTag);
+    }
     info.append(title, meta, tags);
     openButton.append(image, info);
     openButton.addEventListener("click", () => openEntryDetail(entry.id));
@@ -1203,6 +1412,42 @@
       }
       event.target.value = "";
     });
+
+    $("#collectionSearchInput")?.addEventListener("input", event => {
+      collectionViewState.query = String(event.target.value || "").slice(0, 120);
+      saveCollectionViewState();
+      clearTimeout(collectionSearchTimer);
+      collectionSearchTimer = setTimeout(() => void renderCollection({ skipRepair: true }), 120);
+    });
+    $("#clearCollectionSearchButton")?.addEventListener("click", () => {
+      collectionViewState.query = "";
+      saveCollectionViewState();
+      void renderCollection({ skipRepair: true });
+      $("#collectionSearchInput")?.focus();
+    });
+    $("#collectionFilterSelect")?.addEventListener("change", event => {
+      collectionViewState.filter = COLLECTION_FILTER_VALUES.has(event.target.value) ? event.target.value : "all";
+      saveCollectionViewState();
+      void renderCollection({ skipRepair: true });
+    });
+    $("#collectionLanguageFilter")?.addEventListener("change", event => {
+      collectionViewState.language = event.target.value || "all";
+      saveCollectionViewState();
+      void renderCollection({ skipRepair: true });
+    });
+    $("#collectionSortSelect")?.addEventListener("change", event => {
+      collectionViewState.sort = COLLECTION_SORT_VALUES.has(event.target.value) ? event.target.value : "name-asc";
+      saveCollectionViewState();
+      void renderCollection({ skipRepair: true });
+    });
+    document.querySelectorAll("[data-collection-filter]").forEach(button => {
+      button.addEventListener("click", () => {
+        collectionViewState.filter = COLLECTION_FILTER_VALUES.has(button.dataset.collectionFilter) ? button.dataset.collectionFilter : "all";
+        saveCollectionViewState();
+        void renderCollection({ skipRepair: true });
+      });
+    });
+    $("#resetCollectionFiltersButton")?.addEventListener("click", resetCollectionOrganizer);
 
     $("#collectionDetailBackdrop")?.addEventListener("click", closeDetailSheet);
     $("#closeCollectionDetailButton")?.addEventListener("click", closeDetailSheet);

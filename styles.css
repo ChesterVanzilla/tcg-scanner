@@ -3304,3 +3304,179 @@ body.collection-detail-open {
     transition: none;
   }
 }
+
+/* ============================================================
+   CardDex AI v6.10 – Collection Organizer
+   ============================================================ */
+.collection-stats-organizer {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.collection-browser {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid #3f4740;
+  background: linear-gradient(145deg, #171b18, #111411);
+}
+
+.collection-search-row label,
+.collection-filter-grid label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: #aeb7af;
+  font: 700 .68rem/1.35 var(--mono);
+  letter-spacing: .06em;
+}
+
+.collection-search-control {
+  position: relative;
+  display: block;
+}
+
+.collection-search-control input {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 48px 11px 12px;
+  color: #1e1e1e;
+  border: 1px solid #aaa296;
+  border-radius: 9px;
+  background: #fffdf8;
+  font: 600 .8rem/1.4 var(--mono);
+}
+
+.collection-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  transform: translateY(-50%);
+  color: #d8dfd9;
+  border: 1px solid #4b544c;
+  border-radius: 7px;
+  background: #252b26;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.collection-search-clear.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.collection-quick-filters {
+  display: flex;
+  gap: 7px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.collection-filter-chip {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 11px;
+  color: #aeb7af;
+  border: 1px solid #4a534b;
+  border-radius: 7px;
+  background: #202521;
+  font: 800 .59rem/1 var(--mono);
+  letter-spacing: .07em;
+  cursor: pointer;
+}
+
+.collection-filter-chip.active {
+  color: #fff;
+  border-color: #e15c55;
+  background: #9e2d2a;
+  box-shadow: inset 0 -3px 0 #681716;
+}
+
+.collection-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.collection-filter-grid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.collection-filter-summary {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px dashed #414941;
+}
+
+.collection-filter-summary p {
+  margin: 0;
+  color: #9fa9a1;
+  font: 600 .68rem/1.45 var(--mono);
+}
+
+.collection-card.has-duplicates {
+  border-color: #7b7042;
+  box-shadow: inset 3px 0 0 #c6a846;
+}
+
+.collection-card-tags .collection-duplicate-tag {
+  color: #f6e8a3;
+  border-color: #8c7740;
+  background: #332e1d;
+}
+
+.collection-card-tags .collection-provisional-tag {
+  color: #ffdca2;
+  border-color: #9c6f32;
+  background: #3a2915;
+}
+
+.collection-card-tags .collection-review-tag {
+  color: #ffc8c5;
+  border-color: #9c4641;
+  background: #3a1715;
+}
+
+.collection-filter-empty .mini-system-button {
+  margin-top: 16px;
+}
+
+@media (max-width: 700px) {
+  .collection-stats-organizer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .collection-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .collection-filter-summary {
+    display: grid;
+  }
+
+  .collection-filter-summary .mini-system-button {
+    width: 100%;
+    min-height: 42px;
+  }
+}
+
+@media (max-width: 700px) {
+  .collection-stats-organizer > div:last-child {
+    grid-column: auto;
+  }
+}

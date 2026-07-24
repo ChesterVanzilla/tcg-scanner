@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=690" />
+  <link rel="stylesheet" href="styles.css?v=6100" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.9</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.10</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -85,7 +85,7 @@
       <div id="dashboardView">
         <section class="panel dashboard-hero-panel">
           <div class="section-heading">
-            <div class="step-badge">69</div>
+            <div class="step-badge">610</div>
             <div>
               <p class="panel-kicker">LIBRARY-MODUS</p>
               <h2>Dein CardDex auf einen Blick</h2>
@@ -279,11 +279,70 @@
             </div>
           </div>
 
-          <div class="collection-stats">
+          <div class="collection-stats collection-stats-organizer">
             <div><span>KARTEN GESAMT</span><strong id="collectionTotalCount">0</strong></div>
             <div><span>VERSCHIEDENE</span><strong id="collectionUniqueCount">0</strong></div>
-            <div><span>SPEICHER</span><strong>INDEXEDDB</strong></div>
+            <div><span>DOPPELTE</span><strong id="collectionDuplicateCount">0</strong></div>
+            <div><span>GEFILTERT</span><strong id="collectionVisibleCount">0</strong></div>
           </div>
+
+          <section class="collection-browser" aria-label="Sammlung durchsuchen und sortieren">
+            <div class="collection-search-row">
+              <label for="collectionSearchInput">
+                Sammlung durchsuchen
+                <span class="collection-search-control">
+                  <input id="collectionSearchInput" type="search" autocomplete="off" enterkeyhint="search" placeholder="Name, Set, Nummer oder Notiz …">
+                  <button id="clearCollectionSearchButton" class="collection-search-clear" type="button" aria-label="Suchbegriff löschen">×</button>
+                </span>
+              </label>
+            </div>
+
+            <div class="collection-quick-filters" role="group" aria-label="Schnellfilter">
+              <button class="collection-filter-chip active" type="button" data-collection-filter="all">ALLE</button>
+              <button class="collection-filter-chip" type="button" data-collection-filter="duplicates">DOPPELTE</button>
+              <button class="collection-filter-chip" type="button" data-collection-filter="provisional">VORLÄUFIG</button>
+              <button class="collection-filter-chip" type="button" data-collection-filter="review">PRÜFEN</button>
+              <button class="collection-filter-chip" type="button" data-collection-filter="notes">MIT NOTIZ</button>
+            </div>
+
+            <div class="collection-filter-grid">
+              <label>
+                Kartenfilter
+                <select id="collectionFilterSelect">
+                  <option value="all">Alle Karten</option>
+                  <option value="duplicates">Nur doppelte Karten</option>
+                  <option value="single">Nur Einzelkarten</option>
+                  <option value="verified">Verifiziert</option>
+                  <option value="provisional">Vorläufig erkannt</option>
+                  <option value="review">Manuell prüfen</option>
+                  <option value="notes">Mit Notizen</option>
+                  <option value="purchase">Mit Kaufpreis</option>
+                </select>
+              </label>
+              <label>
+                Sprache
+                <select id="collectionLanguageFilter">
+                  <option value="all">Alle Sprachen</option>
+                </select>
+              </label>
+              <label>
+                Sortierung
+                <select id="collectionSortSelect">
+                  <option value="name-asc">Name A–Z</option>
+                  <option value="name-desc">Name Z–A</option>
+                  <option value="set-number">Set und Kartennummer</option>
+                  <option value="quantity-desc">Anzahl absteigend</option>
+                  <option value="newest">Zuletzt geändert</option>
+                  <option value="purchase-desc">Kaufpreis absteigend</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="collection-filter-summary">
+              <p id="collectionFilterSummary">Alle Karten werden angezeigt.</p>
+              <button id="resetCollectionFiltersButton" class="mini-system-button" type="button">Filter zurücksetzen</button>
+            </div>
+          </section>
 
           <div class="backup-actions">
             <button id="exportCollectionButton" class="secondary-button" type="button">JSON-Sicherung exportieren</button>
@@ -332,7 +391,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span>PERSONAL CARD ASSISTANT · v6.9 · LIBRARY</span>
+        <span>PERSONAL CARD ASSISTANT · v6.10 · ORGANIZER</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -499,6 +558,7 @@
           <div><span><i class="status-light state-green"></i> Bildvergleich</span><strong>AKTIV</strong></div>
           <div><span><i class="status-light state-green"></i> Library Engine</span><strong>AKTIV</strong></div>
           <div><span><i class="status-light state-green"></i> Scannerhistorie</span><strong>LOKAL</strong></div>
+          <div><span><i class="status-light state-green"></i> Collection Organizer</span><strong>AKTIV</strong></div>
         </div>
 
         <label class="setting-row toggle-row" for="debugToggle">
@@ -533,7 +593,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong>v6.9</strong></div>
+          <div><span>APP</span><strong>v6.10</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -595,11 +655,11 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=690" defer></script>
-  <script src="collection.js?v=690" defer></script>
-  <script src="library-engine.js?v=690" defer></script>
-  <script src="library-ui.js?v=690" defer></script>
-  <script src="app.js?v=690" defer></script>
+  <script src="carddex-core.js?v=6100" defer></script>
+  <script src="collection.js?v=6100" defer></script>
+  <script src="library-engine.js?v=6100" defer></script>
+  <script src="library-ui.js?v=6100" defer></script>
+  <script src="app.js?v=6100" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>
