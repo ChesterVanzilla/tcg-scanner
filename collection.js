@@ -496,7 +496,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: "6.11",
+      appVersion: window.CardDexCore?.version || "6.11.1",
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,
@@ -563,15 +563,21 @@
     const collections = await getCollections();
     const selectors = [$("#activeCollectionSelect"), ...document.querySelectorAll(".result-collection-select")].filter(Boolean);
     selectors.forEach(select => {
+      const availableCollections = select.id === "activeCollectionSelect"
+        ? collections
+        : collections.filter(collection => collection.type !== "wishlist");
       const chosen = select.value || activeCollectionId;
       select.innerHTML = "";
-      collections.forEach(collection => {
+      availableCollections.forEach(collection => {
         const option = document.createElement("option");
         option.value = collection.id;
         option.textContent = collection.type === "wishlist" ? `★ ${collection.name}` : collection.name;
         select.append(option);
       });
-      select.value = collections.some(item => item.id === chosen) ? chosen : activeCollectionId;
+      const fallbackId = availableCollections.some(item => item.id === activeCollectionId)
+        ? activeCollectionId
+        : availableCollections[0]?.id || "";
+      select.value = availableCollections.some(item => item.id === chosen) ? chosen : fallbackId;
     });
   }
 

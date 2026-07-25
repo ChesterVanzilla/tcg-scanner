@@ -251,22 +251,26 @@
 
     const collectionRow = document.createElement("div");
     collectionRow.className = "history-collection-actions";
+    const ownedCollections = collections.filter(collection => collection.type !== "wishlist");
     const select = document.createElement("select");
     select.setAttribute("aria-label", "Zielsammlung auswählen");
-    collections.forEach(collection => {
+    ownedCollections.forEach(collection => {
       const option = document.createElement("option");
       option.value = collection.id;
-      option.textContent = collection.type === "wishlist" ? `★ ${collection.name}` : collection.name;
+      option.textContent = collection.name;
       select.append(option);
     });
-    const activeId = window.CardDexCollections?.getActiveCollectionId?.();
-    if (activeId && collections.some(item => item.id === activeId)) select.value = activeId;
+    const currentActiveId = window.CardDexCollections?.getActiveCollectionId?.();
+    const activeId = ownedCollections.some(item => item.id === currentActiveId)
+      ? currentActiveId
+      : ownedCollections[0]?.id || "";
+    if (activeId) select.value = activeId;
 
     const add = document.createElement("button");
     add.type = "button";
     add.className = "add-collection-button";
     add.textContent = record.addedToCollection ? "Erneut hinzufügen" : "Zur Sammlung";
-    add.disabled = !collections.length;
+    add.disabled = !ownedCollections.length;
     add.addEventListener("click", async () => {
       add.disabled = true;
       const original = add.textContent;
@@ -282,12 +286,32 @@
         add.textContent = "Speichern fehlgeschlagen";
       } finally {
         setTimeout(() => {
-          add.disabled = !collections.length;
+          add.disabled = !ownedCollections.length;
           add.textContent = original === "Erneut hinzufügen" ? original : "Erneut hinzufügen";
         }, 1300);
       }
     });
-    collectionRow.append(select, add);
+
+    const wishlist = document.createElement("button");
+    wishlist.type = "button";
+    wishlist.className = "mini-system-button history-wishlist-button";
+    wishlist.textContent = "☆ Wunschliste";
+    wishlist.addEventListener("click", async () => {
+      wishlist.disabled = true;
+      try {
+        await window.CardDexCollections?.addToWishlist?.(record.card, { language: record.language || "de" });
+        wishlist.textContent = "★ Hinzugefügt";
+      } catch (error) {
+        console.error(error);
+        wishlist.textContent = "Fehler";
+      } finally {
+        setTimeout(() => {
+          wishlist.disabled = false;
+          wishlist.textContent = "☆ Wunschliste";
+        }, 1300);
+      }
+    });
+    collectionRow.append(select, add, wishlist);
 
     article.append(top, actionRow, collectionRow);
     return article;

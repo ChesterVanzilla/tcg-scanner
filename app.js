@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = "6.9";
+const APP_VERSION = window.CardDexCore?.version || "6.11.1";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -324,6 +324,14 @@ function updateDebugPanelVisibility(hasNewData = false) {
   els.debugPanel.classList.toggle("hidden", !(isDebugModeEnabled() && hasData));
 }
 
+function applyAppVersionLabels() {
+  if (els.bootLine1) els.bootLine1.textContent = `CARDEX SYSTEM v${APP_VERSION}`;
+  const footerVersion = document.querySelector("#footerVersionText");
+  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · WISHLIST`;
+  const settingsVersion = document.querySelector("#settingsAppVersion");
+  if (settingsVersion) settingsVersion.textContent = `v${APP_VERSION}`;
+}
+
 function initializeBootSequence() {
   if (!els.bootScreen) return;
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
@@ -485,6 +493,7 @@ async function refreshWorkerVersionSilently() {
   }
 }
 
+applyAppVersionLabels();
 loadAppSettings();
 loadAiSettings();
 refreshStatusFromSettings();
@@ -1325,15 +1334,55 @@ function hasStrongAiFields(result) {
   return Boolean(String(result?.name || "").trim().length >= 3 && normalizeCollectorNumber(result?.number || ""));
 }
 
+function normalizeRecognizedDenominator(value) {
+  const digits = String(value ?? "")
+    .toUpperCase()
+    .replace(/O/g, "0")
+    .replace(/\D/g, "");
+  if (!digits || digits.length < 2 || digits.length > 3) return "";
+  const numeric = Number(digits);
+  return Number.isFinite(numeric) && numeric >= 10 && numeric <= 999 ? digits : "";
+}
+
+function getCardOfficialTotal(card) {
+  const value = Number(card?._setBrief?.cardCount?.official || card?.set?.cardCount?.official || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function formatInferredDenominator(total, number, originalValue = "") {
+  const numeric = Number(total);
+  if (!Number.isFinite(numeric) || numeric < 10 || numeric > 999) return "";
+  const rawWidth = String(originalValue || "").replace(/\D/g, "").length;
+  const numberDigits = String(number || "").replace(/^[A-Z]+/i, "").replace(/\D/g, "");
+  const width = Math.max(String(numeric).length, rawWidth >= 2 ? rawWidth : 0, numberDigits.length >= 3 ? 3 : 0);
+  return String(numeric).padStart(Math.min(3, Math.max(2, width)), "0");
+}
+
+function replaceAiIdentifierInParsed(parsed, ai) {
+  const remainingIdentifiers = (parsed?.identifiers || []).filter(item => item.source !== "KI-Bilderkennung");
+  const cleaned = {
+    ...parsed,
+    identifiers: remainingIdentifiers,
+    numbers: unique(remainingIdentifiers.map(item => item.number).filter(Boolean)),
+    denominators: unique(remainingIdentifiers.map(item => item.denominator).filter(Boolean)),
+    setCodes: unique(remainingIdentifiers.map(item => item.setCode).filter(Boolean))
+  };
+  return mergeAiResultIntoParsed(cleaned, ai);
+}
+
 function mergeAiAttemptResults(first, second) {
   const a = first && typeof first === "object" ? first : {};
   const b = second && typeof second === "object" ? second : {};
+  const rawDenominator = String(b.denominator ?? a.denominator ?? "").replace(/\D/g, "");
+  const denominator = normalizeRecognizedDenominator(rawDenominator);
   return {
     ...a,
     ...b,
     name: String(b.name || a.name || "").trim(),
     number: normalizeCollectorNumber(b.number || a.number || ""),
-    denominator: String(b.denominator || a.denominator || "").replace(/\D/g, ""),
+    denominator,
+    _rawDenominator: rawDenominator || a._rawDenominator || "",
+    _denominatorRejected: rawDenominator && !denominator ? rawDenominator : "",
     setCode: String(b.setCode || a.setCode || "").toUpperCase().replace(/[^A-Z0-9]/g, ""),
     language: b.language || a.language || els.language.value,
     confidence: Math.max(Number(a.confidence || 0), Number(b.confidence || 0)),
@@ -1345,7 +1394,7 @@ function mergeAiResultIntoParsed(parsed, ai) {
   if (!ai) return parsed;
   const name = String(ai.name || "").trim();
   const number = normalizeCollectorNumber(ai.number || "");
-  const denominator = String(ai.denominator || "").replace(/\D/g, "");
+  const denominator = normalizeRecognizedDenominator(ai.denominator);
   const setCode = String(ai.setCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
   const confidence = Math.max(0, Math.min(1, Number(ai.confidence) || 0));
 
@@ -1451,6 +1500,21 @@ async function analyzePreparedCard() {
       const consistency = assessAiCandidateConsistency(aiResult, candidates);
       aiResult._databaseVerified = consistency.verified;
       aiResult._consistencyReason = consistency.reason;
+
+      if (consistency.correctedDenominator) {
+        aiResult = {
+          ...aiResult,
+          denominator: consistency.correctedDenominator,
+          _denominatorCorrected: true,
+          _databaseVerified: true,
+          _consistencyReason: consistency.reason
+        };
+        parsed = replaceAiIdentifierInParsed(parsed, aiResult);
+        lastAiDiagnostic = {
+          status: "KI-Nenner korrigiert",
+          detail: `${aiResult.name || "–"} · ${aiResult.number}/${aiResult.denominator}`
+        };
+      }
 
       if (consistency.conflict) {
         const rejected = `${aiResult.number || ""}${aiResult.denominator ? `/${aiResult.denominator}` : ""}`;
@@ -1559,18 +1623,39 @@ function hasStrongAiRecognition(ai) {
   return Boolean(name && number && ai._databaseVerified === true && ai._numberRejected !== true);
 }
 
+function mechanicTokensForConsistency(value) {
+  const text = normalizeText(value).replace(/-/g, " ");
+  const tokens = ["mega", "ex", "gx", "vmax", "vstar", "break"];
+  return tokens.filter(token => new RegExp(`(?:^|\\s)${token}(?:$|\\s)`, "i").test(text));
+}
+
 function cardNameCompatibility(cardName, recognizedName) {
+  const fullCard = normalizeText(cardName || "");
+  const fullRecognized = normalizeText(recognizedName || "");
   const card = normalizeText(stripCardMechanics(cardName || ""));
   const recognized = normalizeText(stripCardMechanics(recognizedName || ""));
   if (!card || !recognized) return 0;
-  if (card === recognized) return 1;
-  if (card.includes(recognized) || recognized.includes(card)) return 0.9;
-  return similarity(card, recognized);
+  if (fullCard === fullRecognized) return 1;
+
+  let compatibility;
+  if (card === recognized) compatibility = 0.92;
+  else if (card.includes(recognized) || recognized.includes(card)) compatibility = 0.86;
+  else compatibility = similarity(card, recognized);
+
+  const expectedMechanics = mechanicTokensForConsistency(recognizedName);
+  const cardMechanics = mechanicTokensForConsistency(cardName);
+  const missingMechanics = expectedMechanics.filter(token => !cardMechanics.includes(token));
+  const extraMechanics = cardMechanics.filter(token => !expectedMechanics.includes(token));
+  if (missingMechanics.length) compatibility *= Math.max(0.28, 1 - missingMechanics.length * 0.34);
+  if (extraMechanics.length) compatibility *= Math.max(0.55, 1 - extraMechanics.length * 0.18);
+  return Math.max(0, Math.min(1, compatibility));
 }
 
 function assessAiCandidateConsistency(ai, candidates) {
   const name = String(ai?.name || "").trim();
   const number = normalizeCollectorNumber(ai?.number || "");
+  const denominator = normalizeRecognizedDenominator(ai?.denominator);
+  const attemptedDenominator = String(ai?._rawDenominator || ai?._denominatorRejected || ai?.denominator || "").replace(/\D/g, "");
   if (!name || !number || !Array.isArray(candidates) || !candidates.length) {
     return { verified: false, conflict: false, reason: "unvollständige Prüfdaten" };
   }
@@ -1584,14 +1669,52 @@ function assessAiCandidateConsistency(ai, candidates) {
     .filter(item => item.compatibility >= 0.58);
 
   if (compatibleNumberMatches.length) {
-    return { verified: true, conflict: false, reason: "Name und Nummer passen zu demselben Datenbankeintrag" };
+    const exactDenominatorMatches = denominator
+      ? compatibleNumberMatches.filter(item => getCardOfficialTotal(item.card) === Number(denominator))
+      : [];
+    if (denominator && exactDenominatorMatches.length) {
+      return {
+        verified: true,
+        conflict: false,
+        matchedCard: exactDenominatorMatches[0].card,
+        reason: "Name, Nummer und Nenner passen zu demselben Datenbankeintrag"
+      };
+    }
+
+    const totals = [...new Set(compatibleNumberMatches.map(item => getCardOfficialTotal(item.card)).filter(Boolean))];
+    if (attemptedDenominator && totals.length === 1) {
+      const correctedDenominator = formatInferredDenominator(totals[0], number, attemptedDenominator);
+      return {
+        verified: true,
+        conflict: false,
+        correctedDenominator,
+        matchedCard: compatibleNumberMatches[0].card,
+        reason: `Name und Nummer passen; der fehlerhaft gelesene Nenner wurde auf ${correctedDenominator} korrigiert`
+      };
+    }
+
+    if (denominator) {
+      return {
+        verified: false,
+        conflict: false,
+        denominatorConflict: true,
+        reason: "Name und Kartennummer passen, der gelesene Nenner jedoch nicht zum Datenbankeintrag"
+      };
+    }
+
+    return {
+      verified: true,
+      conflict: false,
+      matchedCard: compatibleNumberMatches[0].card,
+      reason: "Name und Nummer passen zu demselben Datenbankeintrag"
+    };
   }
 
   // Eine fehlende Nummer in TCGdex ist kein Widerspruch. Gerade neue Promos
   // können bereits korrekt gelesen sein, obwohl der Datenbankeintrag noch fehlt.
   // Verworfen wird nur, wenn die Datenbank dieselbe Nummer tatsächlich kennt,
   // diese Treffer aber klar zu einem anderen Kartennamen gehören.
-  if (numberMatches.length && !compatibleNumberMatches.length) {
+  if (numberMatches.length) {
     return {
       verified: false,
       conflict: true,
@@ -1599,7 +1722,7 @@ function assessAiCandidateConsistency(ai, candidates) {
     };
   }
 
-  if (nameMatches.length && !numberMatches.length) {
+  if (nameMatches.length) {
     return {
       verified: false,
       conflict: false,
@@ -2708,8 +2831,12 @@ function getRecognitionStrength(parsed) {
 }
 
 function getReliableIdentifierMatch(parsed, card, minimum = 0) {
+  const officialTotal = getCardOfficialTotal(card);
   return (parsed.identifiers || [])
-    .filter(item => Number(item.reliability || 0) >= minimum && collectorNumbersEqual(item.number, card.localId))
+    .filter(item => {
+      if (Number(item.reliability || 0) < minimum || !collectorNumbersEqual(item.number, card.localId)) return false;
+      return !item.denominator || !officialTotal || Number(item.denominator) === officialTotal;
+    })
     .sort((a, b) => Number(b.reliability || 0) - Number(a.reliability || 0))[0] || null;
 }
 
@@ -3060,58 +3187,26 @@ function renderResults(cards, parsed) {
     meta.className = "result-meta";
     const setName = card.set?.name || card._setBrief?.name || "Set nicht angegeben";
     const officialTotal = card.set?.cardCount?.official || card._setBrief?.cardCount?.official;
-    meta.innerHTML = `${escapeHtml(setName)}<br><span class="result-number">Nr. ${escapeHtml(String(card.localId || "–"))}${officialTotal ? `/${escapeHtml(String(officialTotal))}` : ""}</span>`;
+    const recognizedDenominator = reliableNumberMatch?.denominator && Number(reliableNumberMatch.denominator) === Number(officialTotal)
+      ? String(reliableNumberMatch.denominator)
+      : "";
+    const displayedTotal = recognizedDenominator || (officialTotal ? String(officialTotal) : "");
+    meta.innerHTML = `${escapeHtml(setName)}<br><span class="result-number">Nr. ${escapeHtml(String(card.localId || "–"))}${displayedTotal ? `/${escapeHtml(displayedTotal)}` : ""}</span>`;
 
     const priceBox = buildPriceBox(card.pricing?.cardmarket);
-    const actions = document.createElement("div");
-    actions.className = "cardmarket-actions";
-
-    const primaryLink = document.createElement("a");
-    primaryLink.className = "cardmarket-button";
-    primaryLink.target = "_blank";
-    primaryLink.rel = "noopener noreferrer";
-    primaryLink.textContent = getCardmarketDirectUrl(card) ? "Auf Cardmarket öffnen" : "Auf Cardmarket suchen";
-    primaryLink.href = buildCardmarketUrl(card, parsed, true);
-
-    const fallbackLink = document.createElement("a");
-    fallbackLink.className = "cardmarket-fallback";
-    fallbackLink.target = "_blank";
-    fallbackLink.rel = "noopener noreferrer";
-    fallbackLink.textContent = "Alternative Cardmarket-Suche";
-    fallbackLink.href = buildCardmarketUrl(card, parsed, false);
-
-    actions.append(primaryLink, fallbackLink);
-
-    const collectionActions = document.createElement("div");
-    collectionActions.className = "collection-action-block";
-    const collectionSelect = document.createElement("select");
-    collectionSelect.className = "result-collection-select";
-    collectionSelect.setAttribute("aria-label", "Zielsammlung auswählen");
-    const addCollectionButton = document.createElement("button");
-    addCollectionButton.className = "add-collection-button";
-    addCollectionButton.type = "button";
-    addCollectionButton.textContent = "Zur Sammlung hinzufügen";
-    addCollectionButton.addEventListener("click", async () => {
-      addCollectionButton.disabled = true;
-      try {
-        await window.CardDexCollections?.addCard?.(card, {
-          collectionId: collectionSelect.value || window.CardDexCollections?.getActiveCollectionId?.(),
-          language: card._dataLanguage || els.language.value || "de"
-        });
-        addCollectionButton.textContent = "Hinzugefügt ✓";
-        setTimeout(() => { addCollectionButton.textContent = "Erneut hinzufügen"; }, 1300);
-      } catch (error) {
-        console.error(error);
-        addCollectionButton.textContent = "Speichern fehlgeschlagen";
-      } finally {
-        addCollectionButton.disabled = false;
-      }
-    });
-    collectionActions.append(collectionSelect, addCollectionButton, createWishlistButton(card, card._dataLanguage || els.language.value || "de"));
+    const addCollectionButton = createCollectionPickerButton(card, card._dataLanguage || els.language.value || "de");
+    const secondaryActions = document.createElement("div");
+    secondaryActions.className = "result-secondary-actions";
+    secondaryActions.append(
+      createWishlistButton(card, card._dataLanguage || els.language.value || "de"),
+      createCardmarketButton(card, parsed)
+    );
 
     info.append(title, badges, meta);
     if (priceBox) info.append(priceBox);
-    info.append(actions, collectionActions);
+    info.append(addCollectionButton, secondaryActions);
+    const moreOptions = createCardmarketMoreOptions(card, parsed);
+    if (moreOptions) info.append(moreOptions);
     article.append(image, info);
     els.results.append(article);
     window.CardDexCollections?.populateSelect?.();
@@ -3148,17 +3243,153 @@ function createProvisionalCard(parsed) {
   };
 }
 
+function createCardmarketButton(card, parsed) {
+  const link = document.createElement("a");
+  link.className = "cardmarket-button compact-market-button";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = getCardmarketDirectUrl(card) ? "Cardmarket öffnen" : "Cardmarket suchen";
+  link.href = buildCardmarketUrl(card, parsed, true);
+  return link;
+}
+
+function createCardmarketMoreOptions(card, parsed) {
+  if (!getCardmarketDirectUrl(card)) return null;
+  const directUrl = buildCardmarketUrl(card, parsed, true);
+  const fallbackUrl = buildCardmarketUrl(card, parsed, false);
+  if (!fallbackUrl || fallbackUrl === directUrl) return null;
+  const details = document.createElement("details");
+  details.className = "result-more-options";
+  const summary = document.createElement("summary");
+  summary.textContent = "Weitere Optionen";
+  const fallbackLink = document.createElement("a");
+  fallbackLink.className = "cardmarket-fallback";
+  fallbackLink.target = "_blank";
+  fallbackLink.rel = "noopener noreferrer";
+  fallbackLink.textContent = "Alternative Cardmarket-Suche";
+  fallbackLink.href = fallbackUrl;
+  details.append(summary, fallbackLink);
+  return details;
+}
+
+function createCollectionPickerButton(card, language, provisional = false) {
+  const button = document.createElement("button");
+  button.className = "add-collection-button result-primary-action";
+  button.type = "button";
+  button.textContent = provisional ? "Vorläufig zur Sammlung hinzufügen" : "Zur Sammlung hinzufügen";
+  button.addEventListener("click", () => openCollectionPicker(card, language, button, provisional));
+  return button;
+}
+
+async function openCollectionPicker(card, language, triggerButton, provisional = false) {
+  document.querySelector(".result-picker-backdrop")?.remove();
+  document.body.classList.remove("result-picker-open");
+  const allCollections = await window.CardDexCollections?.getCollections?.() || [];
+  const collections = allCollections.filter(collection => collection?.type !== "wishlist");
+  if (!collections.length) {
+    triggerButton.textContent = "Keine Sammlung verfügbar";
+    setTimeout(() => { triggerButton.textContent = provisional ? "Vorläufig zur Sammlung hinzufügen" : "Zur Sammlung hinzufügen"; }, 1400);
+    return;
+  }
+
+  const activeId = window.CardDexCollections?.getActiveCollectionId?.();
+  const selectedId = collections.some(collection => collection.id === activeId) ? activeId : collections[0].id;
+  const backdrop = document.createElement("div");
+  backdrop.className = "result-picker-backdrop";
+  backdrop.setAttribute("aria-hidden", "false");
+  const sheet = document.createElement("section");
+  sheet.className = "result-picker-sheet";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  sheet.setAttribute("aria-labelledby", "resultPickerTitle");
+  const heading = document.createElement("div");
+  heading.className = "result-picker-heading";
+  const title = document.createElement("h3");
+  title.id = "resultPickerTitle";
+  title.textContent = "Sammlung auswählen";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "result-picker-close";
+  close.setAttribute("aria-label", "Auswahl schließen");
+  close.textContent = "×";
+  heading.append(title, close);
+
+  const form = document.createElement("form");
+  form.className = "result-picker-form";
+  collections.forEach((collection, index) => {
+    const label = document.createElement("label");
+    label.className = "result-picker-option";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "result-target-collection";
+    radio.value = collection.id;
+    radio.checked = collection.id === selectedId || (!selectedId && index === 0);
+    const name = document.createElement("span");
+    name.textContent = collection.name || "Sammlung";
+    label.append(radio, name);
+    form.append(label);
+  });
+
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "submit";
+  confirmButton.className = "add-collection-button result-picker-confirm";
+  confirmButton.textContent = "Hinzufügen";
+  form.append(confirmButton);
+  sheet.append(heading, form);
+  backdrop.append(sheet);
+  document.body.append(backdrop);
+  document.body.classList.add("result-picker-open");
+
+  let closed = false;
+  const escapeHandler = event => {
+    if (event.key === "Escape") cleanup();
+  };
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", escapeHandler);
+    document.body.classList.remove("result-picker-open");
+    backdrop.remove();
+    triggerButton.focus?.({ preventScroll: true });
+  };
+  close.addEventListener("click", cleanup);
+  backdrop.addEventListener("click", event => { if (event.target === backdrop) cleanup(); });
+  document.addEventListener("keydown", escapeHandler);
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const collectionId = new FormData(form).get("result-target-collection") || collections[0].id;
+    confirmButton.disabled = true;
+    triggerButton.disabled = true;
+    try {
+      await window.CardDexCollections?.addCard?.(card, {
+        collectionId,
+        language: language || card._dataLanguage || els.language.value || "de"
+      });
+      cleanup();
+      triggerButton.textContent = "Hinzugefügt ✓";
+      setTimeout(() => { triggerButton.textContent = "Erneut hinzufügen"; }, 1300);
+    } catch (error) {
+      console.error(error);
+      confirmButton.textContent = "Speichern fehlgeschlagen";
+    } finally {
+      confirmButton.disabled = false;
+      triggerButton.disabled = false;
+    }
+  });
+  sheet.querySelector("input:checked")?.focus?.();
+}
+
 function createWishlistButton(card, language) {
   const button = document.createElement("button");
-  button.className = "add-wishlist-button";
+  button.className = "add-wishlist-button compact-wishlist-button";
   button.type = "button";
-  button.textContent = "Zur Wunschliste";
+  button.textContent = "☆ Wunschliste";
   button.addEventListener("click", async () => {
     button.disabled = true;
     try {
       await window.CardDexCollections?.addToWishlist?.(card, { language: language || card._dataLanguage || els.language.value || "de" });
-      button.textContent = "Auf Wunschliste ✓";
-      setTimeout(() => { button.textContent = "Erneut hinzufügen"; }, 1300);
+      button.textContent = "★ Auf Wunschliste";
+      setTimeout(() => { button.textContent = "★ Wunschliste"; }, 1300);
     } catch (error) {
       console.error(error);
       button.textContent = "Speichern fehlgeschlagen";
@@ -3189,42 +3420,14 @@ function renderProvisionalResult(card, parsed) {
   meta.className = "result-meta";
   meta.innerHTML = `${escapeHtml(card.setName)}<br><span class="result-number">Nr. ${escapeHtml(card.localId || "–")}</span><br><small>Kein passender Datenbankeintrag verfügbar. Die gelesenen Angaben bleiben erhalten.</small>`;
 
-  const actions = document.createElement("div");
-  actions.className = "cardmarket-actions";
-  const market = document.createElement("a");
-  market.className = "cardmarket-button";
-  market.target = "_blank";
-  market.rel = "noopener noreferrer";
-  market.href = buildCardmarketUrl(card, parsed, true);
-  market.textContent = "Auf Cardmarket prüfen";
-  actions.append(market);
-
-  const collectionActions = document.createElement("div");
-  collectionActions.className = "collection-action-block";
-  const collectionSelect = document.createElement("select");
-  collectionSelect.className = "result-collection-select";
-  collectionSelect.setAttribute("aria-label", "Zielsammlung auswählen");
-  const addButton = document.createElement("button");
-  addButton.className = "add-collection-button";
-  addButton.type = "button";
-  addButton.textContent = "Vorläufig zur Sammlung hinzufügen";
-  addButton.addEventListener("click", async () => {
-    addButton.disabled = true;
-    try {
-      await window.CardDexCollections?.addCard?.(card, {
-        collectionId: collectionSelect.value || window.CardDexCollections?.getActiveCollectionId?.(),
-        language: card._dataLanguage
-      });
-      addButton.textContent = "Hinzugefügt ✓";
-    } catch (error) {
-      console.error(error);
-      addButton.textContent = "Speichern fehlgeschlagen";
-    } finally {
-      addButton.disabled = false;
-    }
-  });
-  collectionActions.append(collectionSelect, addButton, createWishlistButton(card, card._dataLanguage));
-  info.append(title, badges, meta, actions, collectionActions);
+  const addButton = createCollectionPickerButton(card, card._dataLanguage, true);
+  const secondaryActions = document.createElement("div");
+  secondaryActions.className = "result-secondary-actions";
+  secondaryActions.append(
+    createWishlistButton(card, card._dataLanguage),
+    createCardmarketButton(card, parsed)
+  );
+  info.append(title, badges, meta, addButton, secondaryActions);
   article.append(image, info);
   els.results.append(article);
   window.CardDexCollections?.populateSelect?.();
