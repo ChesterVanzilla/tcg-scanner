@@ -6,13 +6,14 @@
   const API_BASE = "https://api.tcgdex.net/v2";
   const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
   const DEFAULT_COLLECTION_ID = "default-collection";
+  const WISHLIST_COLLECTION_ID = "wishlist";
   const ACTIVE_COLLECTION_KEY = "carddex-v67-active-collection";
-  const BACKUP_VERSION = 3;
+  const BACKUP_VERSION = 4;
   const CARD_DATA_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   const CARDMARKET_LINK_MIGRATION_KEY = "carddex-v685-cardmarket-link-migration";
-  const COLLECTION_VIEW_KEY = "carddex-v610-collection-view";
-  const COLLECTION_FILTER_VALUES = new Set(["all", "duplicates", "single", "verified", "provisional", "review", "notes", "purchase"]);
-  const COLLECTION_SORT_VALUES = new Set(["name-asc", "name-desc", "set-number", "quantity-desc", "newest", "purchase-desc"]);
+  const COLLECTION_VIEW_KEY = "carddex-v611-collection-view";
+  const COLLECTION_FILTER_VALUES = new Set(["all", "duplicates", "single", "verified", "provisional", "review", "notes", "purchase", "priority-high", "target-price"]);
+  const COLLECTION_SORT_VALUES = new Set(["name-asc", "name-desc", "set-number", "quantity-desc", "newest", "purchase-desc", "priority-desc", "target-price-desc"]);
   const collectionCollator = new Intl.Collator("de", { sensitivity: "base", numeric: true });
 
   const LANGUAGE_OPTIONS = [
@@ -142,13 +143,47 @@
     }
   }
 
+  async function ensureWishlistCollection() {
+    const existing = await getCollection(WISHLIST_COLLECTION_ID);
+    if (existing) {
+      if (existing.type !== "wishlist") {
+        const db = await openDatabase();
+        const tx = db.transaction("collections", "readwrite");
+        const done = transactionDone(tx);
+        tx.objectStore("collections").put({ ...existing, type: "wishlist", name: existing.name || "Wunschliste", isSystem: true, updatedAt: new Date().toISOString() });
+        await done;
+      }
+      return;
+    }
+    const db = await openDatabase();
+    const tx = db.transaction("collections", "readwrite");
+    const done = transactionDone(tx);
+    const now = new Date().toISOString();
+    tx.objectStore("collections").put({
+      id: WISHLIST_COLLECTION_ID,
+      name: "Wunschliste",
+      type: "wishlist",
+      createdAt: now,
+      updatedAt: now,
+      isDefault: false,
+      isSystem: true
+    });
+    await done;
+  }
+
+  function collectionSortRank(collection) {
+    if (collection?.isDefault) return 0;
+    if (collection?.type === "wishlist") return 1;
+    return 2;
+  }
+
   async function getCollections() {
     const db = await openDatabase();
     const tx = db.transaction("collections", "readonly");
     const done = transactionDone(tx);
     const result = await requestToPromise(tx.objectStore("collections").getAll());
     await done;
-    return result.sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)) || a.name.localeCompare(b.name, "de"));
+    return result.sort((a, b) => collectionSortRank(a) - collectionSortRank(b) || a.name.localeCompare(b.name, "de"));
   }
 
   async function getCollection(collectionId) {
@@ -276,6 +311,7 @@
       getRawEntry(entryId),
       getCollection(collectionId)
     ]);
+    const isWishlist = collection?.type === "wishlist";
     const db = await openDatabase();
     const tx = db.transaction(["cards", "entries", "collections"], "readwrite");
     const done = transactionDone(tx);
@@ -294,6 +330,8 @@
       purchasePrice: existing?.purchasePrice ?? null,
       purchaseDate: existing?.purchaseDate || "",
       notes: existing?.notes || "",
+      priority: isWishlist ? normalizePriority(options.priority || existing?.priority || "medium") : (existing?.priority || ""),
+      targetPrice: isWishlist ? (parseLocalizedNumber(options.targetPrice ?? existing?.targetPrice) ?? null) : (existing?.targetPrice ?? null),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
       syncStatus: "local"
@@ -302,7 +340,7 @@
     if (collection) collectionStore.put({ ...collection, updatedAt: now });
     await done;
     await refreshAll();
-    toast(`${normalized.name} wurde ${existing ? "erneut " : ""}zur Sammlung hinzugefügt.`);
+    toast(isWishlist ? `${normalized.name} wurde ${existing ? "erneut " : ""}zur Wunschliste hinzugefügt.` : `${normalized.name} wurde ${existing ? "erneut " : ""}zur Sammlung hinzugefügt.`);
     if (!normalized.image && normalized.source !== "scan" && normalized.verificationStatus !== "provisional") void repairCardData(normalized.id, language, false, true).then(updated => {
       if (updated?.image) renderCollection();
     });
@@ -333,6 +371,9 @@
     const purchasePrice = parseLocalizedNumber(updates.purchasePrice);
     const purchaseDate = String(updates.purchaseDate || "");
     const notes = String(updates.notes || "").trim();
+    const isWishlist = current.collection?.type === "wishlist";
+    const priority = isWishlist ? normalizePriority(updates.priority || current.priority || "medium") : (current.priority || "");
+    const targetPrice = isWishlist ? parseLocalizedNumber(updates.targetPrice) : (current.targetPrice ?? null);
     const nextEntryId = buildEntryId(current.collectionId, current.cardId, language, variant);
     const now = new Date().toISOString();
 
@@ -360,6 +401,8 @@
       purchasePrice,
       purchaseDate,
       notes,
+      priority,
+      targetPrice,
       createdAt: collision?.createdAt || current.createdAt || now,
       updatedAt: now,
       syncStatus: "local"
@@ -378,14 +421,14 @@
   async function deleteEntry(entryId, askForConfirmation = true) {
     const current = await getEntry(entryId);
     if (!current) return false;
-    if (askForConfirmation && !confirm(`„${current.card?.name || "Diese Karte"}“ vollständig aus der Sammlung entfernen?`)) return false;
+    if (askForConfirmation && !confirm(current.collection?.type === "wishlist" ? `„${current.card?.name || "Diese Karte"}“ von der Wunschliste entfernen?` : `„${current.card?.name || "Diese Karte"}“ vollständig aus der Sammlung entfernen?`)) return false;
     const db = await openDatabase();
     const tx = db.transaction("entries", "readwrite");
     const done = transactionDone(tx);
     tx.objectStore("entries").delete(entryId);
     await done;
     await refreshAll();
-    toast("Karte wurde aus der Sammlung entfernt.");
+    toast(current.collection?.type === "wishlist" ? "Karte wurde von der Wunschliste entfernt." : "Karte wurde aus der Sammlung entfernt.");
     return true;
   }
 
@@ -420,8 +463,8 @@
   }
 
   async function deleteActiveCollection() {
-    if (activeCollectionId === DEFAULT_COLLECTION_ID) {
-      toast("Die Standardsammlung kann nicht gelöscht werden.", true);
+    if (activeCollectionId === DEFAULT_COLLECTION_ID || activeCollectionId === WISHLIST_COLLECTION_ID) {
+      toast(activeCollectionId === WISHLIST_COLLECTION_ID ? "Die Wunschliste kann nicht gelöscht werden." : "Die Standardsammlung kann nicht gelöscht werden.", true);
       return;
     }
     const collections = await getCollections();
@@ -453,7 +496,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: "6.9",
+      appVersion: "6.11",
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,
@@ -492,6 +535,8 @@
       purchasePrice: null,
       purchaseDate: "",
       notes: "",
+      priority: "",
+      targetPrice: null,
       ...item
     }));
     (backup.scanHistory || []).forEach(item => tx.objectStore("scanHistory").put(item));
@@ -499,6 +544,7 @@
     activeCollectionId = backup.activeCollectionId || DEFAULT_COLLECTION_ID;
     localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId);
     await ensureDefaultCollection();
+    await ensureWishlistCollection();
     await refreshAll();
     toast("Sicherung wurde vollständig wiederhergestellt.");
   }
@@ -522,7 +568,7 @@
       collections.forEach(collection => {
         const option = document.createElement("option");
         option.value = collection.id;
-        option.textContent = collection.name;
+        option.textContent = collection.type === "wishlist" ? `★ ${collection.name}` : collection.name;
         select.append(option);
       });
       select.value = collections.some(item => item.id === chosen) ? chosen : activeCollectionId;
@@ -584,6 +630,8 @@
       entry.language,
       variantLabel(entry.variant),
       entry.condition,
+      entry.priority,
+      entry.targetPrice,
       entry.notes
     ].filter(Boolean).join(" "));
   }
@@ -599,6 +647,8 @@
       case "review": return status === "review";
       case "notes": return Boolean(String(entry.notes || "").trim());
       case "purchase": return entry.purchasePrice !== null && entry.purchasePrice !== "" && Number.isFinite(Number(entry.purchasePrice));
+      case "priority-high": return normalizePriority(entry.priority) === "high";
+      case "target-price": return entry.targetPrice !== null && entry.targetPrice !== "" && Number.isFinite(Number(entry.targetPrice));
       default: return true;
     }
   }
@@ -628,6 +678,15 @@
         const priceB = b.purchasePrice !== null && b.purchasePrice !== "" && Number.isFinite(Number(b.purchasePrice)) ? Number(b.purchasePrice) : -1;
         return priceB - priceA || nameCompare;
       }
+      case "priority-desc": {
+        const rank = { high: 3, medium: 2, low: 1 };
+        return (rank[normalizePriority(b.priority)] || 0) - (rank[normalizePriority(a.priority)] || 0) || nameCompare;
+      }
+      case "target-price-desc": {
+        const priceA = hasStoredNumber(a.targetPrice) ? Number(a.targetPrice) : -1;
+        const priceB = hasStoredNumber(b.targetPrice) ? Number(b.targetPrice) : -1;
+        return priceB - priceA || nameCompare;
+      }
       default: return nameCompare;
     }
   }
@@ -645,7 +704,7 @@
       .sort(compareCollectionEntries);
   }
 
-  function syncCollectionOrganizerControls(entries, visibleEntries) {
+  function syncCollectionOrganizerControls(entries, visibleEntries, current) {
     const search = $("#collectionSearchInput");
     const clear = $("#clearCollectionSearchButton");
     const filter = $("#collectionFilterSelect");
@@ -682,10 +741,35 @@
     if (summary) {
       const visibleQuantity = visibleEntries.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
       const hasFilter = Boolean(collectionViewState.query) || collectionViewState.filter !== "all" || collectionViewState.language !== "all";
+      const noun = current?.type === "wishlist" ? "gesuchte Exemplare" : "Exemplare";
+      const location = current?.type === "wishlist" ? "auf der Wunschliste" : "in dieser Sammlung";
       summary.textContent = hasFilter
-        ? `${visibleEntries.length} von ${entries.length} verschiedenen Karten · ${visibleQuantity} Exemplare sichtbar.`
-        : `${entries.length} verschiedene Karten · ${visibleQuantity} Exemplare in dieser Sammlung.`;
+        ? `${visibleEntries.length} von ${entries.length} verschiedenen Karten · ${visibleQuantity} ${noun} sichtbar.`
+        : `${entries.length} verschiedene Karten · ${visibleQuantity} ${noun} ${location}.`;
     }
+  }
+
+  function syncCollectionModeUi(current) {
+    const isWishlist = current?.type === "wishlist";
+    document.body.classList.toggle("wishlist-mode", isWishlist);
+    const description = $("#collectionDescription");
+    if (description) description.textContent = isWishlist
+      ? "Hier sammelst du Karten, die du noch suchst. Menge, Priorität, Wunschzustand und persönlicher Zielpreis werden lokal gespeichert."
+      : "Deine Karten werden sicher auf diesem Gerät gespeichert. Tippe eine Karte an, um ihre Details zu bearbeiten. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.";
+    if ($("#collectionTotalLabel")) $("#collectionTotalLabel").textContent = isWishlist ? "GESUCHT GESAMT" : "KARTEN GESAMT";
+    if ($("#collectionUniqueLabel")) $("#collectionUniqueLabel").textContent = isWishlist ? "VERSCHIEDENE" : "VERSCHIEDENE";
+    if ($("#collectionThirdLabel")) $("#collectionThirdLabel").textContent = isWishlist ? "HOHE PRIORITÄT" : "DOPPELTE";
+    if ($("#collectionVisibleLabel")) $("#collectionVisibleLabel").textContent = "GEFILTERT";
+    $("#deleteCollectionButton")?.toggleAttribute("disabled", Boolean(current?.isDefault || isWishlist));
+
+    document.querySelectorAll("[data-wishlist-only]").forEach(option => { option.hidden = !isWishlist; option.disabled = !isWishlist; });
+    document.querySelectorAll("[data-collection-only]").forEach(option => { option.hidden = isWishlist; option.disabled = isWishlist; });
+    document.querySelectorAll(".wishlist-only-control").forEach(control => control.classList.toggle("hidden", !isWishlist));
+    document.querySelectorAll(".collection-only-control").forEach(control => control.classList.toggle("hidden", isWishlist));
+    const filterAllowed = isWishlist ? !["duplicates", "single", "purchase"].includes(collectionViewState.filter) : !["priority-high", "target-price"].includes(collectionViewState.filter);
+    if (!filterAllowed) collectionViewState.filter = "all";
+    const sortAllowed = isWishlist ? collectionViewState.sort !== "purchase-desc" : !["priority-desc", "target-price-desc"].includes(collectionViewState.sort);
+    if (!sortAllowed) collectionViewState.sort = "name-asc";
   }
 
   function resetCollectionOrganizer() {
@@ -706,21 +790,26 @@
     const entries = await getEntries(activeCollectionId);
     if (renderToken !== collectionRenderToken) return;
 
+    syncCollectionModeUi(current);
     const visibleEntries = filterAndSortCollectionEntries(entries);
     const total = entries.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-    const duplicateCount = entries.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 1) - 1), 0);
+    const duplicateCount = current.type === "wishlist"
+      ? entries.filter(item => normalizePriority(item.priority) === "high").length
+      : entries.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 1) - 1), 0);
     $("#collectionTitle").textContent = current.name;
     $("#collectionTotalCount").textContent = String(total);
     $("#collectionUniqueCount").textContent = String(entries.length);
     if ($("#collectionDuplicateCount")) $("#collectionDuplicateCount").textContent = String(duplicateCount);
     if ($("#collectionVisibleCount")) $("#collectionVisibleCount").textContent = String(visibleEntries.length);
     $("#activeCollectionSelect").value = activeCollectionId;
-    $("#deleteCollectionButton").disabled = current.isDefault;
-    syncCollectionOrganizerControls(entries, visibleEntries);
+    $("#deleteCollectionButton").disabled = Boolean(current.isDefault || current.type === "wishlist");
+    syncCollectionOrganizerControls(entries, visibleEntries, current);
     container.innerHTML = "";
 
     if (!entries.length) {
-      container.innerHTML = `<div class="collection-empty"><strong>NOCH KEINE KARTEN REGISTRIERT</strong><p>Scanne oder suche eine Karte und füge sie dieser Sammlung hinzu.</p></div>`;
+      container.innerHTML = current.type === "wishlist"
+        ? `<div class="collection-empty wishlist-empty"><strong>WUNSCHLISTE IST NOCH LEER</strong><p>Füge Karten direkt aus einem Scan, einem Suchergebnis oder der Scannerhistorie hinzu.</p></div>`
+        : `<div class="collection-empty"><strong>NOCH KEINE KARTEN REGISTRIERT</strong><p>Scanne oder suche eine Karte und füge sie dieser Sammlung hinzu.</p></div>`;
       return;
     }
 
@@ -741,11 +830,11 @@
       return;
     }
 
-    visibleEntries.forEach(entry => container.append(createCollectionCard(entry)));
+    visibleEntries.forEach(entry => container.append(createCollectionCard(entry, current)));
     if (!options.skipRepair) void repairMissingCardData(entries, renderToken);
   }
 
-  function createCollectionCard(entry) {
+  function createCollectionCard(entry, collection) {
     const card = entry.card || {};
     const article = document.createElement("article");
     article.className = "collection-card";
@@ -769,13 +858,27 @@
     meta.textContent = `${card.setName || "Set nicht angegeben"} · Nr. ${card.localId || "–"}${card.officialTotal ? `/${card.officialTotal}` : ""}`;
     const tags = document.createElement("div");
     tags.className = "collection-card-tags";
+    const isWishlist = collection?.type === "wishlist";
     [String(entry.language || "de").toUpperCase(), variantLabel(entry.variant), entry.condition || "NM"].forEach(value => {
       const tag = document.createElement("span");
       tag.textContent = value;
       tags.append(tag);
     });
     const quantity = Math.max(1, Number(entry.quantity || 1));
-    if (quantity > 1) {
+    if (isWishlist) {
+      article.classList.add("wishlist-card");
+      const priorityTag = document.createElement("span");
+      const priority = normalizePriority(entry.priority);
+      priorityTag.className = `wishlist-priority-tag ${priority}`;
+      priorityTag.textContent = `${priorityLabel(priority).toUpperCase()} PRIORITÄT`;
+      tags.append(priorityTag);
+      if (hasStoredNumber(entry.targetPrice)) {
+        const targetTag = document.createElement("span");
+        targetTag.className = "wishlist-target-tag";
+        targetTag.textContent = `ZIEL ${formatEuro(entry.targetPrice)}`;
+        tags.append(targetTag);
+      }
+    } else if (quantity > 1) {
       article.classList.add("has-duplicates");
       const duplicateTag = document.createElement("span");
       duplicateTag.className = "collection-duplicate-tag";
@@ -793,15 +896,16 @@
     openButton.append(image, info);
     openButton.addEventListener("click", () => openEntryDetail(entry.id));
 
-    const quantityControl = createQuantityControl(entry);
+    const quantityControl = createQuantityControl(entry, isWishlist);
     article.append(openButton, quantityControl);
     return article;
   }
 
-  function createQuantityControl(entry) {
+  function createQuantityControl(entry, isWishlist = false) {
     const control = document.createElement("div");
     control.className = "quantity-control";
-    control.setAttribute("aria-label", "Anzahl");
+    control.setAttribute("aria-label", isWishlist ? "Gesuchte Anzahl" : "Anzahl");
+    control.dataset.mode = isWishlist ? "wishlist" : "collection";
     const minus = document.createElement("button");
     minus.type = "button";
     minus.textContent = "−";
@@ -909,7 +1013,15 @@
     const collectionName = $("#detailCollectionName");
     if (title) title.textContent = card.name || "Unbekannte Karte";
     if (meta) meta.textContent = `${card.setName || "Set nicht angegeben"} · Nr. ${card.localId || "–"}${card.officialTotal ? `/${card.officialTotal}` : ""}`;
+    const isWishlist = entry.collection?.type === "wishlist";
     if (collectionName) collectionName.textContent = entry.collection?.name || "Sammlung";
+    $("#collectionDetailSheet")?.classList.toggle("wishlist-detail-mode", isWishlist);
+    $("#detailPriorityField")?.classList.toggle("hidden", !isWishlist);
+    $("#detailTargetPriceField")?.classList.toggle("hidden", !isWishlist);
+    $("#detailPurchasePriceField")?.classList.toggle("hidden", isWishlist);
+    $("#detailPurchaseDateField")?.classList.toggle("hidden", isWishlist);
+    if ($("#detailQuantityLabel")) $("#detailQuantityLabel").textContent = isWishlist ? "Gesuchte Anzahl" : "Anzahl";
+    if ($("#deleteCollectionEntryButton")) $("#deleteCollectionEntryButton").textContent = isWishlist ? "Von Wunschliste entfernen" : "Karte aus Sammlung löschen";
 
     if (image) {
       image.onerror = null;
@@ -924,6 +1036,8 @@
     if ($("#detailQuantity")) $("#detailQuantity").value = String(Number(entry.quantity || 1));
     if ($("#detailPurchasePrice")) $("#detailPurchasePrice").value = Number.isFinite(Number(entry.purchasePrice)) ? String(entry.purchasePrice).replace(".", ",") : "";
     if ($("#detailPurchaseDate")) $("#detailPurchaseDate").value = entry.purchaseDate || "";
+    setSelectValue($("#detailPriority"), normalizePriority(entry.priority));
+    if ($("#detailTargetPrice")) $("#detailTargetPrice").value = hasStoredNumber(entry.targetPrice) ? String(entry.targetPrice).replace(".", ",") : "";
     if ($("#detailNotes")) $("#detailNotes").value = entry.notes || "";
     if ($("#detailRarity")) $("#detailRarity").textContent = card.rarity || "Nicht angegeben";
     if ($("#detailIllustrator")) $("#detailIllustrator").textContent = card.illustrator || "Nicht angegeben";
@@ -1027,6 +1141,8 @@
         quantity: $("#detailQuantity")?.value,
         purchasePrice: $("#detailPurchasePrice")?.value,
         purchaseDate: $("#detailPurchaseDate")?.value,
+        priority: $("#detailPriority")?.value,
+        targetPrice: $("#detailTargetPrice")?.value,
         notes: $("#detailNotes")?.value
       });
       activeDetailEntryId = nextId;
@@ -1398,6 +1514,7 @@
       const name = prompt("Name der neuen Sammlung:", "Neue Sammlung");
       if (name) await createCollection(name);
     });
+    $("#openWishlistButton")?.addEventListener("click", openWishlist);
     $("#renameCollectionButton")?.addEventListener("click", renameActiveCollection);
     $("#deleteCollectionButton")?.addEventListener("click", deleteActiveCollection);
     $("#exportCollectionButton")?.addEventListener("click", exportBackup);
@@ -1506,6 +1623,7 @@
     try {
       await requestPersistentStorage();
       await ensureDefaultCollection();
+      await ensureWishlistCollection();
       await migrateLegacyCardmarketLinks();
       wireUi();
       await refreshAll();
@@ -1513,6 +1631,25 @@
       console.error("Sammlungsdatenbank konnte nicht initialisiert werden:", error);
       toast("Lokale Sammlungsdatenbank ist nicht verfügbar.", true);
     }
+  }
+
+  function normalizePriority(value) {
+    return ["high", "medium", "low"].includes(String(value || "").toLowerCase()) ? String(value).toLowerCase() : "medium";
+  }
+
+  function priorityLabel(value) {
+    return ({ high: "Hohe", medium: "Mittlere", low: "Niedrige" })[normalizePriority(value)];
+  }
+
+  async function openWishlist() {
+    activeCollectionId = WISHLIST_COLLECTION_ID;
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId);
+    await refreshAll();
+    switchView("collection");
+  }
+
+  async function addToWishlist(card, options = {}) {
+    return addCard(card, { ...options, collectionId: WISHLIST_COLLECTION_ID });
   }
 
   function buildEntryId(collectionId, cardId, language, variant) {
@@ -1550,6 +1687,10 @@
     const normalized = clean.replace(/\s/g, "").replace(",", ".");
     const number = Number(normalized);
     return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) / 100 : null;
+  }
+
+  function hasStoredNumber(value) {
+    return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
   }
 
   function firstFinite(...values) {
@@ -1597,6 +1738,9 @@
   window.CardDexCollections = {
     init,
     addCard,
+    addToWishlist,
+    openWishlist,
+    getWishlistId: () => WISHLIST_COLLECTION_ID,
     refresh: refreshAll,
     getActiveCollectionId: () => activeCollectionId,
     getCollections,

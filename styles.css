@@ -3480,3 +3480,39 @@ body.collection-detail-open {
     grid-column: auto;
   }
 }
+
+
+/* ============================================================
+   CARDEX AI v6.11 – WISHLIST
+   ============================================================ */
+.dashboard-primary-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.collection-action-block { grid-template-columns: minmax(0, 1fr) auto auto; }
+.wishlist-quick-button, .wishlist-toolbar-button, .add-wishlist-button {
+  border-color: rgba(255, 194, 61, .65);
+}
+.add-wishlist-button {
+  min-height: 44px;
+  border: 2px solid rgba(255, 194, 61, .65);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 207, 91, .18), rgba(34, 27, 15, .72));
+  color: #ffe29a;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: .035em;
+  cursor: pointer;
+}
+.add-wishlist-button:disabled { opacity: .6; cursor: wait; }
+.wishlist-mode .collection-panel { border-color: rgba(255, 194, 61, .42); }
+.wishlist-card { box-shadow: inset 0 0 0 1px rgba(255, 194, 61, .14); }
+.wishlist-priority-tag.high { border-color: rgba(255, 94, 94, .8); color: #ffb1b1; }
+.wishlist-priority-tag.medium { border-color: rgba(255, 194, 61, .75); color: #ffe09a; }
+.wishlist-priority-tag.low { border-color: rgba(111, 205, 255, .65); color: #bdeaff; }
+.wishlist-target-tag { border-color: rgba(112, 255, 180, .55) !important; color: #baffd5 !important; }
+.quantity-control[data-mode="wishlist"] { border-color: rgba(255, 194, 61, .55); }
+.wishlist-detail-mode .collection-detail-header { border-bottom-color: rgba(255, 194, 61, .5); }
+.wishlist-empty strong { color: #ffe29a; }
+@media (max-width: 760px) {
+  .dashboard-primary-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .collection-action-block { grid-template-columns: 1fr; }
+  .add-wishlist-button { width: 100%; }
+}

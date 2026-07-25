@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=6100" />
+  <link rel="stylesheet" href="styles.css?v=6110" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.10</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.11</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -85,7 +85,7 @@
       <div id="dashboardView">
         <section class="panel dashboard-hero-panel">
           <div class="section-heading">
-            <div class="step-badge">610</div>
+            <div class="step-badge">611</div>
             <div>
               <p class="panel-kicker">LIBRARY-MODUS</p>
               <h2>Dein CardDex auf einen Blick</h2>
@@ -97,6 +97,7 @@
             <div><span>KARTEN GESAMT</span><strong id="dashboardTotalCards">0</strong><small>inklusive Mehrfachkarten</small></div>
             <div><span>VERSCHIEDENE</span><strong id="dashboardUniqueCards">0</strong><small>eindeutige Karten</small></div>
             <div><span>SAMMLUNGEN</span><strong id="dashboardCollectionCount">0</strong><small>lokale Bereiche</small></div>
+            <div><span>WUNSCHLISTE</span><strong id="dashboardWishlistCount">0</strong><small>gesuchte Karten</small></div>
           </div>
 
           <div class="dashboard-today-console">
@@ -115,6 +116,7 @@
           <div class="dashboard-quick-actions">
             <button id="dashboardStartScanner" class="primary-button" type="button"><span class="button-icon camera-symbol" aria-hidden="true"></span>Live-Scanner starten</button>
             <button class="secondary-button" type="button" data-carddex-view="collection">Sammlung öffnen</button>
+            <button id="dashboardOpenWishlist" class="secondary-button wishlist-quick-button" type="button">Wunschliste öffnen</button>
             <button class="secondary-button" type="button" data-carddex-view="history">Scannerhistorie</button>
           </div>
         </section>
@@ -264,7 +266,7 @@
             <div>
               <p class="panel-kicker">LOKALE DATENBANK</p>
               <h2 id="collectionTitle">Meine Sammlung</h2>
-              <p>Deine Karten werden sicher auf diesem Gerät gespeichert. Tippe eine Karte an, um ihre Details zu bearbeiten. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
+              <p id="collectionDescription">Deine Karten werden sicher auf diesem Gerät gespeichert. Tippe eine Karte an, um ihre Details zu bearbeiten. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
             </div>
           </div>
 
@@ -274,16 +276,17 @@
             </label>
             <div class="collection-toolbar-actions">
               <button id="createCollectionButton" class="secondary-button" type="button">Neue Sammlung</button>
+              <button id="openWishlistButton" class="mini-system-button wishlist-toolbar-button" type="button">Wunschliste</button>
               <button id="renameCollectionButton" class="mini-system-button" type="button">Umbenennen</button>
               <button id="deleteCollectionButton" class="mini-system-button danger-button" type="button">Löschen</button>
             </div>
           </div>
 
           <div class="collection-stats collection-stats-organizer">
-            <div><span>KARTEN GESAMT</span><strong id="collectionTotalCount">0</strong></div>
-            <div><span>VERSCHIEDENE</span><strong id="collectionUniqueCount">0</strong></div>
-            <div><span>DOPPELTE</span><strong id="collectionDuplicateCount">0</strong></div>
-            <div><span>GEFILTERT</span><strong id="collectionVisibleCount">0</strong></div>
+            <div><span id="collectionTotalLabel">KARTEN GESAMT</span><strong id="collectionTotalCount">0</strong></div>
+            <div><span id="collectionUniqueLabel">VERSCHIEDENE</span><strong id="collectionUniqueCount">0</strong></div>
+            <div><span id="collectionThirdLabel">DOPPELTE</span><strong id="collectionDuplicateCount">0</strong></div>
+            <div><span id="collectionVisibleLabel">GEFILTERT</span><strong id="collectionVisibleCount">0</strong></div>
           </div>
 
           <section class="collection-browser" aria-label="Sammlung durchsuchen und sortieren">
@@ -299,10 +302,11 @@
 
             <div class="collection-quick-filters" role="group" aria-label="Schnellfilter">
               <button class="collection-filter-chip active" type="button" data-collection-filter="all">ALLE</button>
-              <button class="collection-filter-chip" type="button" data-collection-filter="duplicates">DOPPELTE</button>
+              <button class="collection-filter-chip collection-only-control" type="button" data-collection-filter="duplicates">DOPPELTE</button>
               <button class="collection-filter-chip" type="button" data-collection-filter="provisional">VORLÄUFIG</button>
               <button class="collection-filter-chip" type="button" data-collection-filter="review">PRÜFEN</button>
               <button class="collection-filter-chip" type="button" data-collection-filter="notes">MIT NOTIZ</button>
+              <button class="collection-filter-chip wishlist-only-control hidden" type="button" data-collection-filter="priority-high">HOHE PRIORITÄT</button>
             </div>
 
             <div class="collection-filter-grid">
@@ -310,13 +314,15 @@
                 Kartenfilter
                 <select id="collectionFilterSelect">
                   <option value="all">Alle Karten</option>
-                  <option value="duplicates">Nur doppelte Karten</option>
-                  <option value="single">Nur Einzelkarten</option>
+                  <option value="duplicates" data-collection-only>Nur doppelte Karten</option>
+                  <option value="single" data-collection-only>Nur Einzelkarten</option>
                   <option value="verified">Verifiziert</option>
                   <option value="provisional">Vorläufig erkannt</option>
                   <option value="review">Manuell prüfen</option>
                   <option value="notes">Mit Notizen</option>
-                  <option value="purchase">Mit Kaufpreis</option>
+                  <option value="purchase" data-collection-only>Mit Kaufpreis</option>
+                  <option value="priority-high" data-wishlist-only>Hohe Priorität</option>
+                  <option value="target-price" data-wishlist-only>Mit Zielpreis</option>
                 </select>
               </label>
               <label>
@@ -333,7 +339,9 @@
                   <option value="set-number">Set und Kartennummer</option>
                   <option value="quantity-desc">Anzahl absteigend</option>
                   <option value="newest">Zuletzt geändert</option>
-                  <option value="purchase-desc">Kaufpreis absteigend</option>
+                  <option value="purchase-desc" data-collection-only>Kaufpreis absteigend</option>
+                  <option value="priority-desc" data-wishlist-only>Priorität</option>
+                  <option value="target-price-desc" data-wishlist-only>Zielpreis absteigend</option>
                 </select>
               </label>
             </div>
@@ -391,7 +399,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span>PERSONAL CARD ASSISTANT · v6.10 · ORGANIZER</span>
+        <span>PERSONAL CARD ASSISTANT · v6.11 · WISHLIST</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -439,20 +447,32 @@
               <select id="detailCondition"></select>
             </label>
             <label>
-              Anzahl
+              <span id="detailQuantityLabel">Anzahl</span>
               <span class="detail-quantity-control">
                 <button id="detailQuantityMinus" type="button" aria-label="Anzahl verringern">−</button>
                 <input id="detailQuantity" type="number" min="1" step="1" inputmode="numeric" value="1">
                 <button id="detailQuantityPlus" type="button" aria-label="Anzahl erhöhen">+</button>
               </span>
             </label>
-            <label>
+            <label id="detailPurchasePriceField">
               Kaufpreis in Euro
               <input id="detailPurchasePrice" type="text" inputmode="decimal" placeholder="z. B. 12,50">
             </label>
-            <label>
+            <label id="detailPurchaseDateField">
               Kaufdatum
               <input id="detailPurchaseDate" type="date">
+            </label>
+            <label id="detailPriorityField" class="wishlist-detail-field hidden">
+              Priorität
+              <select id="detailPriority">
+                <option value="high">Hoch</option>
+                <option value="medium" selected>Mittel</option>
+                <option value="low">Niedrig</option>
+              </select>
+            </label>
+            <label id="detailTargetPriceField" class="wishlist-detail-field hidden">
+              Zielpreis in Euro
+              <input id="detailTargetPrice" type="text" inputmode="decimal" placeholder="z. B. 25,00">
             </label>
             <label class="collection-detail-notes">
               Notizen
@@ -593,7 +613,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong>v6.10</strong></div>
+          <div><span>APP</span><strong>v6.11</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -655,11 +675,11 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=6100" defer></script>
-  <script src="collection.js?v=6100" defer></script>
-  <script src="library-engine.js?v=6100" defer></script>
-  <script src="library-ui.js?v=6100" defer></script>
-  <script src="app.js?v=6100" defer></script>
+  <script src="carddex-core.js?v=6110" defer></script>
+  <script src="collection.js?v=6110" defer></script>
+  <script src="library-engine.js?v=6110" defer></script>
+  <script src="library-ui.js?v=6110" defer></script>
+  <script src="app.js?v=6110" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

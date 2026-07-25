@@ -107,6 +107,7 @@
     setText("#dashboardTotalCards", data.totalCopies);
     setText("#dashboardUniqueCards", data.uniqueCards);
     setText("#dashboardCollectionCount", data.collectionCount);
+    setText("#dashboardWishlistCount", data.wishlistCount);
     setText("#dashboardTodayScans", data.todayScans);
     setText("#dashboardVerifiedToday", data.verifiedToday);
     setText("#dashboardReviewToday", data.reviewToday);
@@ -142,7 +143,7 @@
           text.textContent = collection.name || "Sammlung";
           name.append(text);
           const count = document.createElement("b");
-          count.textContent = `${collection.count || 0} Karten`;
+          count.textContent = collection.type === "wishlist" ? `${collection.count || 0} gesucht` : `${collection.count || 0} Karten`;
           row.append(name, count);
           row.addEventListener("click", () => {
             const select = $("#activeCollectionSelect");
@@ -255,7 +256,7 @@
     collections.forEach(collection => {
       const option = document.createElement("option");
       option.value = collection.id;
-      option.textContent = collection.name;
+      option.textContent = collection.type === "wishlist" ? `★ ${collection.name}` : collection.name;
       select.append(option);
     });
     const activeId = window.CardDexCollections?.getActiveCollectionId?.();
@@ -341,6 +342,9 @@
     });
     document.querySelectorAll("[data-carddex-view]").forEach(button => {
       button.addEventListener("click", () => switchView(button.dataset.carddexView));
+    });
+    $("#dashboardOpenWishlist")?.addEventListener("click", async () => {
+      await window.CardDexCollections?.openWishlist?.();
     });
     $("#dashboardStartScanner")?.addEventListener("click", () => {
       switchView("scanner", { instant: true });

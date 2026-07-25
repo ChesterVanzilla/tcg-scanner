@@ -3107,7 +3107,7 @@ function renderResults(cards, parsed) {
         addCollectionButton.disabled = false;
       }
     });
-    collectionActions.append(collectionSelect, addCollectionButton);
+    collectionActions.append(collectionSelect, addCollectionButton, createWishlistButton(card, card._dataLanguage || els.language.value || "de"));
 
     info.append(title, badges, meta);
     if (priceBox) info.append(priceBox);
@@ -3146,6 +3146,27 @@ function createProvisionalCard(parsed) {
     scanImage,
     image: ""
   };
+}
+
+function createWishlistButton(card, language) {
+  const button = document.createElement("button");
+  button.className = "add-wishlist-button";
+  button.type = "button";
+  button.textContent = "Zur Wunschliste";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await window.CardDexCollections?.addToWishlist?.(card, { language: language || card._dataLanguage || els.language.value || "de" });
+      button.textContent = "Auf Wunschliste ✓";
+      setTimeout(() => { button.textContent = "Erneut hinzufügen"; }, 1300);
+    } catch (error) {
+      console.error(error);
+      button.textContent = "Speichern fehlgeschlagen";
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
 }
 
 function renderProvisionalResult(card, parsed) {
@@ -3202,7 +3223,7 @@ function renderProvisionalResult(card, parsed) {
       addButton.disabled = false;
     }
   });
-  collectionActions.append(collectionSelect, addButton);
+  collectionActions.append(collectionSelect, addButton, createWishlistButton(card, card._dataLanguage));
   info.append(title, badges, meta, actions, collectionActions);
   article.append(image, info);
   els.results.append(article);

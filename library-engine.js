@@ -233,8 +233,11 @@
     const todayKey = window.CardDexCore?.localDayKey?.() || "";
     const sortedHistory = history.sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
     const todayScans = sortedHistory.filter(record => window.CardDexCore?.localDayKey?.(record.createdAt) === todayKey);
-    const totalCopies = entries.reduce((sum, entry) => sum + Math.max(0, Number(entry.quantity || 0)), 0);
-    const uniqueCards = new Set(entries.map(entry => entry.cardId).filter(Boolean)).size;
+    const collectionById = new Map(collections.map(collection => [collection.id, collection]));
+    const ownedEntries = entries.filter(entry => collectionById.get(entry.collectionId)?.type !== "wishlist");
+    const wishlistEntries = entries.filter(entry => collectionById.get(entry.collectionId)?.type === "wishlist");
+    const totalCopies = ownedEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.quantity || 0)), 0);
+    const uniqueCards = new Set(ownedEntries.map(entry => entry.cardId).filter(Boolean)).size;
     const countsByCollection = new Map();
     entries.forEach(entry => countsByCollection.set(entry.collectionId, (countsByCollection.get(entry.collectionId) || 0) + Math.max(0, Number(entry.quantity || 0))));
 
@@ -242,7 +245,9 @@
       collections: collections
         .map(collection => ({ ...collection, count: countsByCollection.get(collection.id) || 0 }))
         .sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)) || b.count - a.count),
-      collectionCount: collections.length,
+      collectionCount: collections.filter(collection => collection.type !== "wishlist").length,
+      wishlistCount: wishlistEntries.length,
+      wishlistCopies: wishlistEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.quantity || 0)), 0),
       totalCopies,
       uniqueCards,
       historyCount: sortedHistory.length,
