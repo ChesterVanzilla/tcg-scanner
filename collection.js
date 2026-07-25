@@ -496,7 +496,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: window.CardDexCore?.version || "6.11.1",
+      appVersion: window.CardDexCore?.version || "6.12",
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,

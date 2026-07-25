@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const VERSION = "6.11.1";
+  const VERSION = "6.12";
   const EVENT_PREFIX = "carddex:";
   const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 

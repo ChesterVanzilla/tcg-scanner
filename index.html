@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=6111" />
+  <link rel="stylesheet" href="styles.css?v=6120" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.11.1</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.12</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -78,6 +78,7 @@
       <button id="showDashboardView" class="app-nav-button active" type="button" role="tab" aria-selected="true">START</button>
       <button id="showScannerView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SCAN</button>
       <button id="showCollectionView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SAMMLUNG</button>
+      <button id="showSetsView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SETS</button>
       <button id="showHistoryView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">VERLAUF</button>
     </nav>
 
@@ -85,11 +86,11 @@
       <div id="dashboardView">
         <section class="panel dashboard-hero-panel">
           <div class="section-heading">
-            <div class="step-badge">611</div>
+            <div class="step-badge">612</div>
             <div>
               <p class="panel-kicker">LIBRARY-MODUS</p>
               <h2>Dein CardDex auf einen Blick</h2>
-              <p>Sammlung, Scannerhistorie und Verifizierungsstatus werden lokal auf diesem Gerät zusammengeführt.</p>
+              <p>Sammlung, Sets, Scannerhistorie und Verifizierungsstatus werden lokal auf diesem Gerät zusammengeführt.</p>
             </div>
           </div>
 
@@ -117,6 +118,7 @@
             <button id="dashboardStartScanner" class="primary-button" type="button"><span class="button-icon camera-symbol" aria-hidden="true"></span>Live-Scanner starten</button>
             <button class="secondary-button" type="button" data-carddex-view="collection">Sammlung öffnen</button>
             <button id="dashboardOpenWishlist" class="secondary-button wishlist-quick-button" type="button">Wunschliste öffnen</button>
+            <button class="secondary-button set-quick-button" type="button" data-carddex-view="sets">Set-Fortschritt</button>
             <button class="secondary-button" type="button" data-carddex-view="history">Scannerhistorie</button>
           </div>
         </section>
@@ -362,6 +364,131 @@
         </section>
       </div>
 
+
+      <div id="setsView" class="hidden">
+        <section id="setOverviewPanel" class="panel sets-panel">
+          <div class="section-heading">
+            <div class="step-badge">04</div>
+            <div>
+              <p class="panel-kicker">SETDEX-MODUS</p>
+              <h2>Set-Fortschritt</h2>
+              <p>Sieh auf einen Blick, welche Sets du begonnen hast, welche Karten fehlen und wo doppelte Exemplare liegen.</p>
+            </div>
+          </div>
+
+          <div class="set-overview-stats">
+            <div><span>GESTARTET</span><strong id="setStartedCount">0</strong><small>Sets mit Karten</small></div>
+            <div><span>VOLLSTÄNDIG</span><strong id="setCompleteCount">0</strong><small>komplette Sets</small></div>
+            <div><span>FEHLEND</span><strong id="setMissingCount">0</strong><small>bekannte Karten</small></div>
+            <div><span>DOPPELT</span><strong id="setDuplicateCopiesCount">0</strong><small>zusätzliche Exemplare</small></div>
+          </div>
+
+          <section class="set-browser" aria-label="Sets durchsuchen und sortieren">
+            <div class="set-search-row">
+              <label for="setOverviewSearchInput">
+                <span>SET SUCHEN</span>
+                <span class="set-search-control">
+                  <input id="setOverviewSearchInput" type="search" autocomplete="off" enterkeyhint="search" placeholder="Setname oder Setcode …">
+                  <button id="clearSetOverviewSearchButton" type="button" aria-label="Set-Suche löschen">×</button>
+                </span>
+              </label>
+              <button id="refreshSetOverviewButton" class="mini-system-button" type="button">Aktualisieren</button>
+            </div>
+
+            <div class="set-filter-chips" role="group" aria-label="Setfilter">
+              <button class="set-filter-chip active" type="button" data-set-overview-filter="all">ALLE</button>
+              <button class="set-filter-chip" type="button" data-set-overview-filter="incomplete">UNVOLLSTÄNDIG</button>
+              <button class="set-filter-chip" type="button" data-set-overview-filter="complete">KOMPLETT</button>
+              <button class="set-filter-chip" type="button" data-set-overview-filter="duplicates">DOPPELTE</button>
+              <button class="set-filter-chip" type="button" data-set-overview-filter="wishlist">WUNSCHLISTE</button>
+            </div>
+
+            <div class="set-control-grid">
+              <label>
+                ANZEIGE
+                <select id="setOverviewMode">
+                  <option value="owned" selected>Meine begonnenen Sets</option>
+                  <option value="all">Alle bekannten Sets</option>
+                </select>
+              </label>
+              <label>
+                SORTIERUNG
+                <select id="setOverviewSort">
+                  <option value="progress-desc" selected>Fortschritt absteigend</option>
+                  <option value="cards-desc">Gesammelte Karten</option>
+                  <option value="missing-desc">Fehlende Karten</option>
+                  <option value="duplicates-desc">Doppelte Karten</option>
+                  <option value="name">Setname A–Z</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="set-browser-summary">
+              <p id="setOverviewSummary">Set-Daten werden vorbereitet.</p>
+              <p id="setOverviewStatus" class="set-data-status" role="status">Fortschritt basiert auf allen bekannten Karten eines Sets, einschließlich Secret Rares.</p>
+            </div>
+          </section>
+
+          <div id="setOverviewGrid" class="set-overview-grid"></div>
+        </section>
+
+        <section id="setDetailPanel" class="panel set-detail-panel hidden">
+          <div class="set-detail-topbar">
+            <button id="backToSetOverviewButton" class="mini-system-button" type="button">‹ Alle Sets</button>
+            <button id="refreshSetDetailButton" class="mini-system-button" type="button">Aktualisieren</button>
+          </div>
+
+          <div class="set-detail-hero">
+            <div class="set-detail-logo-wrap">
+              <img id="setDetailLogo" src="icons/card-placeholder.svg" alt="Set-Logo">
+            </div>
+            <div class="set-detail-title">
+              <p class="panel-kicker">SET-DETAILS</p>
+              <h2 id="setDetailName">Pokémon-Set</h2>
+              <span id="setDetailCode">SET</span>
+            </div>
+          </div>
+
+          <div class="set-detail-progress-console">
+            <div class="set-detail-progress-heading">
+              <span><strong id="setDetailOwnedCount">0</strong> / <b id="setDetailTotalCount">0</b> Karten</span>
+              <strong id="setDetailPercent">0 %</strong>
+            </div>
+            <div class="set-detail-progress-track"><i id="setDetailProgressBar"></i></div>
+            <div class="set-detail-mini-stats">
+              <div><span>FEHLEND</span><strong id="setDetailMissingCount">0</strong></div>
+              <div><span>DOPPELT</span><strong id="setDetailDuplicateCount">0</strong></div>
+              <div><span>WUNSCHLISTE</span><strong id="setDetailWishlistCount">0</strong></div>
+            </div>
+          </div>
+
+          <section class="set-detail-browser" aria-label="Karten im Set filtern">
+            <div class="set-search-row">
+              <label for="setDetailSearchInput">
+                <span>KARTE SUCHEN</span>
+                <span class="set-search-control">
+                  <input id="setDetailSearchInput" type="search" autocomplete="off" enterkeyhint="search" placeholder="Name, Nummer oder Seltenheit …">
+                  <button id="clearSetDetailSearchButton" type="button" aria-label="Kartensuche löschen">×</button>
+                </span>
+              </label>
+            </div>
+            <div class="set-filter-chips" role="group" aria-label="Kartenfilter">
+              <button class="set-filter-chip active" type="button" data-set-detail-filter="all">ALLE</button>
+              <button class="set-filter-chip" type="button" data-set-detail-filter="owned">VORHANDEN</button>
+              <button class="set-filter-chip" type="button" data-set-detail-filter="missing">FEHLEND</button>
+              <button class="set-filter-chip" type="button" data-set-detail-filter="duplicates">DOPPELT</button>
+              <button class="set-filter-chip" type="button" data-set-detail-filter="wishlist">WUNSCHLISTE</button>
+            </div>
+            <div class="set-browser-summary">
+              <p id="setDetailFilterSummary">Karten werden geladen.</p>
+              <p id="setDetailStatus" class="set-data-status" role="status">Fehlende Karten können direkt zur Wunschliste hinzugefügt werden.</p>
+            </div>
+          </section>
+
+          <div id="setDetailCards" class="set-detail-cards"></div>
+        </section>
+      </div>
+
       <div id="historyView" class="hidden">
         <section class="panel history-panel">
           <div class="section-heading">
@@ -399,7 +526,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.11.1 · WISHLIST</span>
+        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.12 · SETDEX</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -613,7 +740,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong id="settingsAppVersion">v6.11.1</strong></div>
+          <div><span>APP</span><strong id="settingsAppVersion">v6.12</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -675,11 +802,13 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=6111" defer></script>
-  <script src="collection.js?v=6111" defer></script>
-  <script src="library-engine.js?v=6111" defer></script>
-  <script src="library-ui.js?v=6111" defer></script>
-  <script src="app.js?v=6111" defer></script>
+  <script src="carddex-core.js?v=6120" defer></script>
+  <script src="collection.js?v=6120" defer></script>
+  <script src="library-engine.js?v=6120" defer></script>
+  <script src="set-engine.js?v=6120" defer></script>
+  <script src="library-ui.js?v=6120" defer></script>
+  <script src="set-ui.js?v=6120" defer></script>
+  <script src="app.js?v=6120" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

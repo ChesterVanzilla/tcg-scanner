@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const VIEW_IDS = ["dashboard", "scanner", "collection", "history"];
+  const VIEW_IDS = ["dashboard", "scanner", "collection", "sets", "history"];
   const STATUS_LABELS = {
     verified: "VERIFIZIERT",
     provisional: "VORLÄUFIG",
@@ -28,6 +28,7 @@
 
     if (next === "collection") window.CardDexCollections?.refresh?.();
     if (next === "dashboard") void renderDashboard();
+    if (next === "sets") window.CardDexSetsUI?.activate?.();
     if (next === "history") void renderHistory();
 
     if (!options.keepScroll) window.scrollTo({ top: 0, behavior: options.instant ? "auto" : "smooth" });
@@ -394,6 +395,7 @@
       await window.CardDexLibraryEngine?.init?.();
       wireNavigation();
       wireHistoryControls();
+      await window.CardDexSetsUI?.init?.();
       window.CardDexCore?.on?.("history-changed", () => {
         if (activeView === "history") void renderHistory();
         void renderDashboard();
