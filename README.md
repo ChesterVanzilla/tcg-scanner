@@ -4,9 +4,9 @@ CardDex AI ist eine private, iPhone-optimierte Web-App zum Scannen, Erkennen und
 
 ## Aktuelle Version
 
-**v6.12 – SetDex**
+**v6.13.1 – MasterSet Bugfix**
 
-Die aktuelle Version ergänzt eine vollständige Set-Übersicht mit Sammlungsfortschritt, fehlenden Karten, Dubletten und direkter Wunschlisten-Verknüpfung. Für die Nutzung ist keine zusätzliche Anmeldung erforderlich.
+Die aktuelle Version stabilisiert die Mega-ex-Erkennung, ergänzt Trainer-Galerie-Logos und vereinheitlicht die Cardmarket-Weiterleitung in sämtlichen App-Bereichen. Für die Nutzung ist keine zusätzliche Anmeldung erforderlich.
 
 ## Hauptfunktionen
 
@@ -19,6 +19,7 @@ Die aktuelle Version ergänzt eine vollständige Set-Übersicht mit Sammlungsfor
 - Suche, Schnellfilter und Sortierung innerhalb jeder Sammlung
 - automatische Erkennung und Kennzeichnung doppelter Karten
 - Set-Übersicht mit Fortschritt, fehlenden Karten und Dubletten
+- persönliche Set-Projekte mit gesammelter Fehlkarten-Wunschliste
 - vollständige Set-Kartenlisten mit Wunschlisten- und Cardmarket-Aktionen
 - Mengen, Sprache, Variante, Zustand, Kaufpreis, Kaufdatum und Notizen
 - automatische Bild-Rückfallebenen
@@ -69,3 +70,13 @@ Siehe `README-V6.11.1.md`.
 ## v6.12 – SetDex
 
 Siehe `README-V6.12.md`.
+
+
+## v6.13 – MasterSet
+
+Siehe `README-V6.13.md`.
+
+
+## v6.13.1 – MasterSet Bugfix
+
+Siehe `README-V6.13.1.md`.

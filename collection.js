@@ -290,9 +290,11 @@
       hp: card.hp ?? null,
       types: Array.isArray(card.types) ? card.types : [],
       variants: card.variants || null,
+      thirdParty: card.thirdParty || null,
       pricing: sanitizePricing(card.pricing),
+      cardmarketProductId: window.CardDexCore?.extractCardmarketProductId?.(card) || "",
       cardmarketUrl: normalizeCardmarketUrl(card.cardmarketUrl || card.pricing?.cardmarket?.url || ""),
-      cardmarketSetCode: normalizeCardmarketSetCode(card.cardmarketSetCode || card.set?.ptcgoCode || ""),
+      cardmarketSetCode: window.CardDexCore?.deriveCardmarketSetCode?.(card) || normalizeCardmarketSetCode(card.cardmarketSetCode || card.set?.ptcgoCode || ""),
       pokemonTcgId: String(card.pokemonTcgId || ""),
       englishName: card.englishName || "",
       cardmarketCheckedAt: card.cardmarketCheckedAt || "",
@@ -496,7 +498,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: window.CardDexCore?.version || "6.13",
+      appVersion: window.CardDexCore?.version || "6.13.1",
       setProjects: window.CardDexSetEngine?.getSetProjects?.() || [],
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
@@ -1116,14 +1118,13 @@
     const link = $("#detailCardmarketLink");
     if (!link) return;
     const direct = getCardmarketDirectUrl(card);
-    if (direct) {
-      link.href = direct;
-      link.textContent = "Auf Cardmarket öffnen";
-      return;
-    }
-    const query = buildCardmarketFallbackQuery(card);
-    link.href = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(query)}`;
-    link.textContent = "Auf Cardmarket suchen";
+    link.href = window.CardDexCore?.getCardmarketUrl?.(card)
+      || `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(buildCardmarketFallbackQuery(card))}`;
+    link.textContent = direct ? "Auf Cardmarket öffnen" : "Auf Cardmarket suchen";
+    link.onclick = event => {
+      event.preventDefault();
+      window.CardDexCore?.openCardmarket?.(card, { language: card?.dataLanguage || "de" });
+    };
   }
 
   function setDetailLoading(isLoading, message, isError = false) {
@@ -1186,7 +1187,7 @@
 
   async function repairCardData(cardId, preferredLanguage = "de", forceEnglishImage = false, forceRefresh = false) {
     const existing = await getCard(cardId);
-    const cardmarketMetadataReady = getCardmarketDirectUrl(existing) || existing?.cardmarketSetCode || isFresh(existing?.cardmarketCheckedAt);
+    const cardmarketMetadataReady = getCardmarketDirectUrl(existing) || existing?.cardmarketProductId || existing?.cardmarketSetCode || isFresh(existing?.cardmarketCheckedAt);
     if (!forceRefresh && existing?.image && cardmarketMetadataReady && isFresh(existing.detailsFetchedAt)) return existing;
     const cacheKey = `${cardId}:${preferredLanguage}:${forceEnglishImage ? "forced" : "normal"}`;
     if (cardFetchPromises.has(cacheKey)) return cardFetchPromises.get(cacheKey);
@@ -1225,6 +1226,7 @@
       if (!primary && !imageSource && !pokemonFallback) throw new Error("Kartendaten nicht gefunden");
       const merged = mergeCardData(existing, primary || imageSource || pokemonFallback, primaryLanguage || imageLanguage || "en", imageSource || pokemonFallback, imageLanguage || "en");
       if (pokemonFallback?.cardmarketUrl) merged.cardmarketUrl = pokemonFallback.cardmarketUrl;
+      if (pokemonFallback?.cardmarketProductId) merged.cardmarketProductId = pokemonFallback.cardmarketProductId;
       if (pokemonFallback?.cardmarketSetCode) merged.cardmarketSetCode = pokemonFallback.cardmarketSetCode;
       if (pokemonFallback?.pokemonTcgId) merged.pokemonTcgId = pokemonFallback.pokemonTcgId;
       if (pokemonFallback?.englishName) merged.englishName = pokemonFallback.englishName;
@@ -1340,18 +1342,7 @@
   }
 
   function normalizeCardmarketUrl(value) {
-    const url = String(value || "").trim();
-    if (!url) return "";
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== "https:") return "";
-      const host = parsed.hostname.toLowerCase();
-      if ((host === "cardmarket.com" || host === "www.cardmarket.com") &&
-          /^\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(parsed.pathname)) return parsed.href;
-    } catch {
-      return "";
-    }
-    return "";
+    return window.CardDexCore?.normalizeCardmarketUrl?.(value) || "";
   }
 
   function sanitizePricing(pricing) {
@@ -1368,7 +1359,8 @@
   }
 
   function normalizeCardmarketSetCode(value) {
-    return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return window.CardDexCore?.normalizeCardmarketSetCode?.(value)
+      || String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   }
 
   function normalizeCardmarketCollectorNumber(value) {
@@ -1392,18 +1384,12 @@
   }
 
   function getCardmarketDirectUrl(card) {
-    return normalizeCardmarketUrl(card?.cardmarketUrl || card?.pricing?.cardmarket?.url || "");
+    return window.CardDexCore?.getCardmarketDirectUrl?.(card) || "";
   }
 
   function buildCardmarketFallbackQuery(card) {
-    const name = String(card?.name || card?.englishName || "").trim();
-    const setCode = normalizeCardmarketSetCode(card?.cardmarketSetCode || "");
-    const number = normalizeCardmarketCollectorNumber(card?.localId || "");
-    const parts = [];
-    if (name) parts.push(name);
-    if (setCode && !number.startsWith(setCode)) parts.push(setCode);
-    if (number) parts.push(number);
-    return parts.join(" ").replace(/\s+/g, " ").trim();
+    return window.CardDexCore?.buildCardmarketQuery?.(card)
+      || [card?.name, card?.cardmarketSetCode, normalizeCardmarketCollectorNumber(card?.localId)].filter(Boolean).join(" ");
   }
 
   function mergePricing(current, fallback) {
@@ -1427,6 +1413,8 @@
     const latestMarket = getCardmarketDirectUrl(latest);
     const candidateMarket = getCardmarketDirectUrl(result);
     if (!candidateMarket && latestMarket) result.cardmarketUrl = latestMarket;
+    result.cardmarketProductId = result.cardmarketProductId || latest.cardmarketProductId || window.CardDexCore?.extractCardmarketProductId?.(latest) || "";
+    result.thirdParty = result.thirdParty || latest.thirdParty || null;
 
     result.pricing = mergePricing(result.pricing, latest.pricing);
     result.englishName = result.englishName || latest.englishName || "";
@@ -1469,9 +1457,11 @@
       hp: primary?.hp ?? existing?.hp ?? null,
       types: Array.isArray(primary?.types) ? primary.types : (existing?.types || []),
       variants: primary?.variants || existing?.variants || null,
+      thirdParty: primary?.thirdParty || existing?.thirdParty || null,
       pricing: sanitizePricing(primary?.pricing || existing?.pricing || null),
+      cardmarketProductId: window.CardDexCore?.extractCardmarketProductId?.(primary) || existing?.cardmarketProductId || "",
       cardmarketUrl: normalizeCardmarketUrl(primary?.cardmarketUrl || primary?.pricing?.cardmarket?.url || existing?.cardmarketUrl || existing?.pricing?.cardmarket?.url || ""),
-      cardmarketSetCode: normalizeCardmarketSetCode(primary?.cardmarketSetCode || primary?.set?.ptcgoCode || existing?.cardmarketSetCode || ""),
+      cardmarketSetCode: window.CardDexCore?.deriveCardmarketSetCode?.(primary) || normalizeCardmarketSetCode(primary?.cardmarketSetCode || primary?.set?.ptcgoCode || existing?.cardmarketSetCode || ""),
       pokemonTcgId: String(primary?.pokemonTcgId || existing?.pokemonTcgId || ""),
       englishName: primary?.englishName || existing?.englishName || "",
       cardmarketCheckedAt: existing?.cardmarketCheckedAt || "",

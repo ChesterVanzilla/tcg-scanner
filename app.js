@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = window.CardDexCore?.version || "6.13";
+const APP_VERSION = window.CardDexCore?.version || "6.13.1";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -327,7 +327,7 @@ function updateDebugPanelVisibility(hasNewData = false) {
 function applyAppVersionLabels() {
   if (els.bootLine1) els.bootLine1.textContent = `CARDEX SYSTEM v${APP_VERSION}`;
   const footerVersion = document.querySelector("#footerVersionText");
-  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · MASTERSET`;
+  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · MASTERSET BUGFIX`;
   const settingsVersion = document.querySelector("#settingsAppVersion");
   if (settingsVersion) settingsVersion.textContent = `v${APP_VERSION}`;
 }
@@ -1322,16 +1322,24 @@ async function requestAiIdentification(canvas, mode) {
   }
 }
 
+function normalizeRecognizedCardName(value) {
+  const shared = window.CardDexCore?.normalizeCardmarketCardName?.(value);
+  return String(shared || value || "")
+    .replace(/[|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function hasUsefulAiResult(result) {
   if (!result || typeof result !== "object") return false;
-  const name = String(result.name || "").trim();
+  const name = normalizeRecognizedCardName(result.name);
   const number = normalizeCollectorNumber(result.number || "");
   const rejectedName = /^usions?$|fusions?[-\s]*angriff|fusion[-\s]*strike|fließender[-\s]*angriff|rapid[-\s]*strike/i.test(name);
   return Boolean(number || (name.length >= 3 && !rejectedName));
 }
 
 function hasStrongAiFields(result) {
-  return Boolean(String(result?.name || "").trim().length >= 3 && normalizeCollectorNumber(result?.number || ""));
+  return Boolean(normalizeRecognizedCardName(result?.name).length >= 3 && normalizeCollectorNumber(result?.number || ""));
 }
 
 function normalizeRecognizedDenominator(value) {
@@ -1378,7 +1386,7 @@ function mergeAiAttemptResults(first, second) {
   return {
     ...a,
     ...b,
-    name: String(b.name || a.name || "").trim(),
+    name: normalizeRecognizedCardName(b.name || a.name || ""),
     number: normalizeCollectorNumber(b.number || a.number || ""),
     denominator,
     _rawDenominator: rawDenominator || a._rawDenominator || "",
@@ -1392,7 +1400,7 @@ function mergeAiAttemptResults(first, second) {
 
 function mergeAiResultIntoParsed(parsed, ai) {
   if (!ai) return parsed;
-  const name = String(ai.name || "").trim();
+  const name = normalizeRecognizedCardName(ai.name);
   const number = normalizeCollectorNumber(ai.number || "");
   const denominator = normalizeRecognizedDenominator(ai.denominator);
   const setCode = String(ai.setCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
@@ -1501,18 +1509,22 @@ async function analyzePreparedCard() {
       aiResult._databaseVerified = consistency.verified;
       aiResult._consistencyReason = consistency.reason;
 
-      if (consistency.correctedDenominator) {
+      if (consistency.correctedDenominator || consistency.correctedName || consistency.correctedSetCode) {
         aiResult = {
           ...aiResult,
-          denominator: consistency.correctedDenominator,
-          _denominatorCorrected: true,
+          name: consistency.correctedName || aiResult.name,
+          denominator: consistency.correctedDenominator || aiResult.denominator,
+          setCode: consistency.correctedSetCode || aiResult.setCode,
+          _nameCorrected: Boolean(consistency.correctedName),
+          _denominatorCorrected: Boolean(consistency.correctedDenominator),
+          _setCodeCorrected: Boolean(consistency.correctedSetCode),
           _databaseVerified: true,
           _consistencyReason: consistency.reason
         };
         parsed = replaceAiIdentifierInParsed(parsed, aiResult);
         lastAiDiagnostic = {
-          status: "KI-Nenner korrigiert",
-          detail: `${aiResult.name || "–"} · ${aiResult.number}/${aiResult.denominator}`
+          status: consistency.correctedDenominator ? "KI-Nenner korrigiert" : "KI-Angaben korrigiert",
+          detail: `${aiResult.name || "–"} · ${[aiResult.setCode, `${aiResult.number}${aiResult.denominator ? `/${aiResult.denominator}` : ""}`].filter(Boolean).join(" ")}`
         };
       }
 
@@ -1618,7 +1630,7 @@ function hasUsefulRecognition(parsed) {
 
 function hasStrongAiRecognition(ai) {
   if (!ai || typeof ai !== "object") return false;
-  const name = String(ai.name || "").trim();
+  const name = normalizeRecognizedCardName(ai.name);
   const number = normalizeCollectorNumber(ai.number || "");
   return Boolean(name && number && ai._databaseVerified === true && ai._numberRejected !== true);
 }
@@ -1630,10 +1642,12 @@ function mechanicTokensForConsistency(value) {
 }
 
 function cardNameCompatibility(cardName, recognizedName) {
-  const fullCard = normalizeText(cardName || "");
-  const fullRecognized = normalizeText(recognizedName || "");
-  const card = normalizeText(stripCardMechanics(cardName || ""));
-  const recognized = normalizeText(stripCardMechanics(recognizedName || ""));
+  const normalizedCardName = normalizeRecognizedCardName(cardName);
+  const normalizedRecognizedName = normalizeRecognizedCardName(recognizedName);
+  const fullCard = normalizeText(normalizedCardName);
+  const fullRecognized = normalizeText(normalizedRecognizedName);
+  const card = normalizeText(stripCardMechanics(normalizedCardName));
+  const recognized = normalizeText(stripCardMechanics(normalizedRecognizedName));
   if (!card || !recognized) return 0;
   if (fullCard === fullRecognized) return 1;
 
@@ -1652,7 +1666,7 @@ function cardNameCompatibility(cardName, recognizedName) {
 }
 
 function assessAiCandidateConsistency(ai, candidates) {
-  const name = String(ai?.name || "").trim();
+  const name = normalizeRecognizedCardName(ai?.name);
   const number = normalizeCollectorNumber(ai?.number || "");
   const denominator = normalizeRecognizedDenominator(ai?.denominator);
   const attemptedDenominator = String(ai?._rawDenominator || ai?._denominatorRejected || ai?.denominator || "").replace(/\D/g, "");
@@ -1661,34 +1675,67 @@ function assessAiCandidateConsistency(ai, candidates) {
   }
 
   const numberMatches = candidates.filter(card => collectorNumbersEqual(number, card.localId));
-  const nameMatches = candidates
-    .map(card => ({ card, compatibility: cardNameCompatibility(card.name, name) }))
-    .filter(item => item.compatibility >= 0.58);
-  const compatibleNumberMatches = numberMatches
-    .map(card => ({ card, compatibility: cardNameCompatibility(card.name, name) }))
-    .filter(item => item.compatibility >= 0.58);
+  const scoredNumberMatches = numberMatches.map(card => ({
+    card,
+    compatibility: cardNameCompatibility(card.name, name),
+    officialTotal: getCardOfficialTotal(card),
+    cardMechanics: mechanicTokensForConsistency(card.name)
+  }));
+  const expectedMechanics = mechanicTokensForConsistency(name);
+  const mechanicsCompatible = item => !expectedMechanics.length || expectedMechanics.every(token => item.cardMechanics.includes(token));
+  const correctedFields = item => ({
+    correctedName: cardNameCompatibility(item.card.name, name) < 0.94 ? item.card.name : "",
+    correctedSetCode: window.CardDexCore?.deriveCardmarketSetCode?.(item.card) || ""
+  });
 
-  if (compatibleNumberMatches.length) {
-    const exactDenominatorMatches = denominator
-      ? compatibleNumberMatches.filter(item => getCardOfficialTotal(item.card) === Number(denominator))
-      : [];
-    if (denominator && exactDenominatorMatches.length) {
+  // Eine vollständige Nummer wie 253/217 ist stärker als ein einzelnes falsch
+  // gelesenes Zeichen im Namen. Gibt es genau einen passenden Datensatz mit
+  // gleichem Nenner und stimmiger Mechanik, wird der Name aus der Datenbank
+  // übernommen statt die korrekte Nummer zu verwerfen.
+  if (denominator) {
+    const exactIdentifierMatches = scoredNumberMatches.filter(item =>
+      item.officialTotal === Number(denominator) && (item.compatibility >= 0.32 || mechanicsCompatible(item))
+    );
+    if (exactIdentifierMatches.length === 1) {
+      const match = exactIdentifierMatches[0];
       return {
         verified: true,
         conflict: false,
-        matchedCard: exactDenominatorMatches[0].card,
+        matchedCard: match.card,
+        ...correctedFields(match),
+        reason: match.compatibility >= 0.82
+          ? "Name, Nummer und Nenner passen zu demselben Datenbankeintrag"
+          : "Nummer und Nenner sind eindeutig; der leicht beschädigte Kartenname wurde aus der Datenbank korrigiert"
+      };
+    }
+  }
+
+  const compatibleNumberMatches = scoredNumberMatches.filter(item => item.compatibility >= 0.58);
+  if (compatibleNumberMatches.length) {
+    const exactDenominatorMatches = denominator
+      ? compatibleNumberMatches.filter(item => item.officialTotal === Number(denominator))
+      : [];
+    if (denominator && exactDenominatorMatches.length) {
+      const match = exactDenominatorMatches[0];
+      return {
+        verified: true,
+        conflict: false,
+        matchedCard: match.card,
+        ...correctedFields(match),
         reason: "Name, Nummer und Nenner passen zu demselben Datenbankeintrag"
       };
     }
 
-    const totals = [...new Set(compatibleNumberMatches.map(item => getCardOfficialTotal(item.card)).filter(Boolean))];
+    const totals = [...new Set(compatibleNumberMatches.map(item => item.officialTotal).filter(Boolean))];
     if (attemptedDenominator && totals.length === 1) {
       const correctedDenominator = formatInferredDenominator(totals[0], number, attemptedDenominator);
+      const match = compatibleNumberMatches[0];
       return {
         verified: true,
         conflict: false,
         correctedDenominator,
-        matchedCard: compatibleNumberMatches[0].card,
+        matchedCard: match.card,
+        ...correctedFields(match),
         reason: `Name und Nummer passen; der fehlerhaft gelesene Nenner wurde auf ${correctedDenominator} korrigiert`
       };
     }
@@ -1702,13 +1749,19 @@ function assessAiCandidateConsistency(ai, candidates) {
       };
     }
 
+    const match = compatibleNumberMatches[0];
     return {
       verified: true,
       conflict: false,
-      matchedCard: compatibleNumberMatches[0].card,
+      matchedCard: match.card,
+      ...correctedFields(match),
       reason: "Name und Nummer passen zu demselben Datenbankeintrag"
     };
   }
+
+  const nameMatches = candidates
+    .map(card => ({ card, compatibility: cardNameCompatibility(card.name, name) }))
+    .filter(item => item.compatibility >= 0.58);
 
   // Eine fehlende Nummer in TCGdex ist kein Widerspruch. Gerade neue Promos
   // können bereits korrekt gelesen sein, obwohl der Datenbankeintrag noch fehlt.
@@ -2546,7 +2599,7 @@ async function findCandidates(parsed, language) {
     const matching = candidates.filter(card => setCodes.some(code => setCodeMatchesCard(code, card)));
     if (matching.length) {
       candidates = matching;
-    } else if (hasStrongSetIdentifier(parsed)) {
+    } else if (hasStrongSetIdentifier(parsed) && !hasStrongFullNumberIdentifier(parsed)) {
       candidates = [];
     }
   }
@@ -2613,43 +2666,27 @@ function escapePokemonQueryValue(value) {
 
 
 function normalizeExternalCardmarketUrl(value) {
-  const url = String(value || "").trim();
-  if (!url) return "";
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:") return "";
-    const host = parsed.hostname.toLowerCase();
-    if ((host === "cardmarket.com" || host === "www.cardmarket.com") &&
-        /^\/(?:de|en)\/Pokemon\/Products\/Singles\//i.test(parsed.pathname)) return parsed.href;
-  } catch {
-    return "";
-  }
-  return "";
+  return window.CardDexCore?.normalizeCardmarketUrl?.(value) || "";
 }
 
 function normalizeCardmarketSetCode(value) {
-  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return window.CardDexCore?.normalizeCardmarketSetCode?.(value)
+    || String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 function getCardmarketDirectUrl(card) {
-  return normalizeExternalCardmarketUrl(
-    card?.cardmarketUrl || card?.pricing?.cardmarket?.url || card?._cardmarketUrl || ""
-  );
+  return window.CardDexCore?.getCardmarketDirectUrl?.(card) || "";
 }
 
 function buildCardmarketFallbackQuery(card, parsed, includeSetCode = true) {
-  const marketName = String(
-    includeSetCode
-      ? (card?.name || card?.englishName || parsed?.nameHints?.[0]?.value || "")
-      : (card?.englishName || card?.name || parsed?.nameHints?.[0]?.value || "")
-  ).trim();
-  const number = normalizeCollectorNumber(card?.localId || parsed?.identifiers?.[0]?.number || parsed?.numbers?.[0] || "");
-  const marketSetCode = normalizeCardmarketSetCode(card?.cardmarketSetCode || card?.set?.ptcgoCode || card?._cardmarketSetCode || "");
-  const parts = [];
-  if (marketName) parts.push(marketName);
-  if (includeSetCode && marketSetCode && !String(number).toUpperCase().startsWith(marketSetCode)) parts.push(marketSetCode);
-  if (number) parts.push(number);
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+  const name = includeSetCode
+    ? (card?.name || card?.englishName || parsed?.nameHints?.[0]?.value || "")
+    : (card?.englishName || card?.name || parsed?.nameHints?.[0]?.value || "");
+  return window.CardDexCore?.buildCardmarketQuery?.(card, {
+    name,
+    setCode: includeSetCode ? undefined : "",
+    number: card?.localId || parsed?.identifiers?.[0]?.number || parsed?.numbers?.[0] || ""
+  }) || [name, card?.localId].filter(Boolean).join(" ");
 }
 
 function toPokemonTcgSetId(value) {
@@ -2742,6 +2779,14 @@ async function enrichPrimaryCardmarketMetadata(card) {
   }
 
   return mapPokemonCardmarketMetadata(card, pokemonCard);
+}
+
+function hasStrongFullNumberIdentifier(parsed) {
+  return (parsed?.identifiers || []).some(identifier =>
+    identifier?.number
+    && identifier?.denominator
+    && Number(identifier?.reliability || 0) >= 0.42
+  );
 }
 
 function hasStrongSetIdentifier(parsed) {
@@ -3038,6 +3083,7 @@ function snapshotCardForHistory(card, scanPreview = "") {
     variants: source.variants || null,
     pricing: source.pricing || null,
     cardmarketUrl: getCardmarketDirectUrl(source),
+    cardmarketProductId: window.CardDexCore?.extractCardmarketProductId?.(source) || "",
     cardmarketSetCode: normalizeCardmarketSetCode(source.cardmarketSetCode || set?.ptcgoCode || ""),
     pokemonTcgId: String(source.pokemonTcgId || ""),
     englishName: String(source.englishName || ""),
@@ -3250,6 +3296,14 @@ function createCardmarketButton(card, parsed) {
   link.rel = "noopener noreferrer";
   link.textContent = getCardmarketDirectUrl(card) ? "Cardmarket öffnen" : "Cardmarket suchen";
   link.href = buildCardmarketUrl(card, parsed, true);
+  link.addEventListener("click", event => {
+    event.preventDefault();
+    window.CardDexCore?.openCardmarket?.(card, {
+      language: card?._dataLanguage || els.language.value || "de",
+      name: card?.name || parsed?.nameHints?.[0]?.value || "",
+      number: card?.localId || parsed?.identifiers?.[0]?.number || ""
+    });
+  });
   return link;
 }
 
@@ -3458,14 +3512,13 @@ function buildPriceBox(pricing) {
 }
 
 function buildCardmarketUrl(card, parsed, precise) {
-  const directUrl = getCardmarketDirectUrl(card);
-  if (precise && directUrl) return directUrl;
-
-  // Cardmarket reagiert empfindlich auf zu lange Suchphrasen und gemischte
-  // Set-Bezeichnungen. Deshalb verwenden wir nur Kartenname, optional den
-  // echten Cardmarket/PTCGO-Setcode und die Sammlernummer.
-  const query = buildCardmarketFallbackQuery(card, parsed, precise);
-  return buildCardmarketSearchUrl(query);
+  return window.CardDexCore?.getCardmarketUrl?.(card, {
+    name: precise
+      ? (card?.name || parsed?.nameHints?.[0]?.value || "")
+      : (card?.englishName || card?.name || parsed?.nameHints?.[0]?.value || ""),
+    setCode: precise ? undefined : "",
+    number: card?.localId || parsed?.identifiers?.[0]?.number || parsed?.numbers?.[0] || ""
+  }) || buildCardmarketSearchUrl(buildCardmarketFallbackQuery(card, parsed, precise));
 }
 
 function buildParsedSearchQuery(parsed) {
@@ -3476,8 +3529,8 @@ function buildParsedSearchQuery(parsed) {
 }
 
 function buildCardmarketSearchUrl(query) {
-  const params = new URLSearchParams({ searchString: String(query || "").trim() });
-  return `${CARDMARKET_SEARCH}?${params.toString()}`;
+  return window.CardDexCore?.buildCardmarketSearchUrl?.(query)
+    || `${CARDMARKET_SEARCH}?searchString=${encodeURIComponent(String(query || "").trim())}`;
 }
 
 function isConfidentTopMatch(top, margin, parsed) {
@@ -3918,7 +3971,7 @@ function numberVariants(number) {
 }
 
 function nameSearchVariants(name, mechanics = []) {
-  const clean = String(name || "").trim();
+  const clean = normalizeRecognizedCardName(name);
   if (clean.length < 3) return [];
   const variants = new Set([clean]);
   const base = stripCardMechanics(clean);
@@ -3957,10 +4010,10 @@ function nameSearchVariants(name, mechanics = []) {
 function stripCardMechanics(value) {
   return String(value || "")
     .replace(/[€£]/g, "e")
-    .replace(/mega[\s-]*/gi, "")
-    .replace(/(?:pok[eé]mon[-\s]*)?(?:ex|gx|vmax|vstar|v-union|break)/gi, "")
-    .replace(/tag[-\s]*team/gi, "")
-    .replace(/(?:radiant|strahlend(?:es|er|e)?|shining|gl[aä]nzend(?:es|er|e)?)/gi, "")
+    .replace(/\bmega\b[\s-]*/gi, "")
+    .replace(/\b(?:pok[eé]mon[-\s]*)?(?:ex|gx|vmax|vstar|v-union|break)\b/gi, "")
+    .replace(/\btag[-\s]*team\b/gi, "")
+    .replace(/\b(?:radiant|strahlend(?:es|er|e)?|shining|gl[aä]nzend(?:es|er|e)?)\b/gi, "")
     .replace(/[()\[\]{}]/g, " ")
     .replace(/\s+/g, " ")
     .replace(/^[-\s]+|[-\s]+$/g, "")
@@ -3971,14 +4024,14 @@ function mechanicsFromCardName(value) {
   const text = String(value || "").replace(/[€£]/g, "e").toLowerCase();
   const result = [];
   const add = mechanic => { if (!result.includes(mechanic)) result.push(mechanic); };
-  if (/mega|^m\s+[a-z]/i.test(text)) add("mega");
-  if (/ex/i.test(text)) add("ex");
-  if (/gx/i.test(text)) add("gx");
-  if (/vmax/i.test(text)) add("vmax");
-  if (/vstar|v-star/i.test(text)) add("vstar");
+  if (/\bmega\b|^m\s+[a-z]/i.test(text)) add("mega");
+  if (/\bex\b/i.test(text)) add("ex");
+  if (/\bgx\b/i.test(text)) add("gx");
+  if (/\bvmax\b/i.test(text)) add("vmax");
+  if (/\bvstar\b|v-star/i.test(text)) add("vstar");
   if (/v-union/i.test(text)) add("v-union");
   if (/tag[-\s]*team/i.test(text)) add("tag-team");
-  if (/break/i.test(text)) add("break");
+  if (/\bbreak\b/i.test(text)) add("break");
   if (/radiant|strahlend/i.test(text)) add("radiant");
   if (/shining|gl[aä]nzend/i.test(text)) add("shining");
   return result;

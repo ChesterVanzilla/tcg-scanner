@@ -172,16 +172,17 @@
   }
 
   function buildHistorySearchUrl(record) {
-    const direct = String(record.cardmarketUrl || record.card?.cardmarketUrl || "").trim();
-    if (/^https:\/\/(?:www\.)?cardmarket\.com\/[^\s]+/i.test(direct)) return direct;
     const recognition = record.recognition || {};
-    const card = record.card || {};
-    const query = [
-      card.englishName || card.name || recognition.name,
-      card.cardmarketSetCode || recognition.setCode,
-      card.localId || recognition.number
-    ].filter(Boolean).join(" ");
-    return window.CardDexCore?.buildCardmarketSearchUrl?.(query) || "https://www.cardmarket.com/de/Pokemon/Products/Search";
+    const card = {
+      ...(record.card || {}),
+      cardmarketUrl: record.cardmarketUrl || record.card?.cardmarketUrl || "",
+      name: record.card?.name || recognition.name || "",
+      localId: record.card?.localId || recognition.number || "",
+      cardmarketSetCode: record.card?.cardmarketSetCode || recognition.setCode || ""
+    };
+    return window.CardDexCore?.getCardmarketUrl?.(card)
+      || window.CardDexCore?.buildCardmarketSearchUrl?.([card.name, card.cardmarketSetCode, card.localId].filter(Boolean).join(" "))
+      || "https://www.cardmarket.com/de/Pokemon/Products/Search";
   }
 
   function createHistoryCard(record, collections) {
@@ -232,6 +233,16 @@
     market.rel = "noopener noreferrer";
     market.href = buildHistorySearchUrl(record);
     market.textContent = "Cardmarket";
+    market.addEventListener("click", event => {
+      event.preventDefault();
+      window.CardDexCore?.openCardmarket?.({
+        ...(record.card || {}),
+        cardmarketUrl: record.cardmarketUrl || record.card?.cardmarketUrl || "",
+        name: record.card?.name || record.recognition?.name || "",
+        localId: record.card?.localId || record.recognition?.number || "",
+        cardmarketSetCode: record.card?.cardmarketSetCode || record.recognition?.setCode || ""
+      }, { language: record.language || "de" });
+    });
 
     const retry = document.createElement("button");
     retry.type = "button";

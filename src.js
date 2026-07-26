@@ -25,7 +25,7 @@ export default {
       if (!image.startsWith("data:image/")) return json({ error: "Missing image data URI" }, 400, cors);
       if (image.length > 4_500_000) return json({ error: "Image too large" }, 413, cors);
 
-      const question = `Identify the exact Pokémon Trading Card Game card shown in the image. The printed card language is ${language}. Read the collector number from the bottom of the card and preserve card suffixes such as ex, EX, GX, V, VMAX, VSTAR and Mega. Do not identify the illustrated Pokémon only; identify the exact printed card. Return ONLY compact valid JSON with this schema: {"name":"exact printed card name","number":"collector number before slash","denominator":"number after slash or empty","setCode":"printed set code or empty","language":"de or en","confidence":0.0,"notes":"very short uncertainty note"}. If uncertain, still provide the best visible reading and lower confidence. Never include Markdown.`;
+      const question = `Identify the exact Pokémon Trading Card Game card shown in the image. The printed card language is ${language}. Read the collector number from the bottom of the card and preserve card suffixes such as ex, EX, GX, V, VMAX, VSTAR and Mega. Treat the boxed single letter before the set code as a regulation mark, never as part of the set code. Example: for "J ASC DE 253/217 ★★" return setCode "ASC", number "253", denominator "217" and ignore the rarity stars. Do not turn the stylized ex emblem or a separator into @, © or another character. Do not identify the illustrated Pokémon only; identify the exact printed card. Return ONLY compact valid JSON with this schema: {"name":"exact printed card name","number":"collector number before slash","denominator":"number after slash or empty","setCode":"printed set code or empty","language":"de or en","confidence":0.0,"notes":"very short uncertainty note"}. If uncertain, still provide the best visible reading and lower confidence. Never include Markdown.`;
 
       const result = await env.AI.run(MODEL, {
         task: "query",
@@ -56,14 +56,30 @@ function parseJsonAnswer(answer) {
   try { return JSON.parse(match[0]); } catch { return null; }
 }
 
+function normalizeCardName(value) {
+  return String(value || "")
+    .replace(/[@©®]\s*(?=(?:ex|EX|GX|V|VMAX|VSTAR)\b)/g, " ")
+    .replace(/[–—]/g, "-")
+    .replace(/-\s*(ex|EX|GX|V|VMAX|VSTAR)\b/g, " $1")
+    .replace(/^Mega\s+/i, "Mega-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSetCode(value) {
+  const clean = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  if (/^(?:DE|EN|FR|IT|ES|PT|[A-Z])$/.test(clean)) return "";
+  return clean;
+}
+
 function normalizeResult(value) {
   const number = String(value.number || "").replace(/[^0-9A-Za-z]/g, "").slice(0, 10);
   const denominator = String(value.denominator || "").replace(/\D/g, "").slice(0, 4);
   return {
-    name: String(value.name || "").trim().slice(0, 80),
+    name: normalizeCardName(value.name).slice(0, 80),
     number,
     denominator,
-    setCode: String(value.setCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8),
+    setCode: normalizeSetCode(value.setCode),
     language: value.language === "en" ? "en" : "de",
     confidence: Math.max(0, Math.min(1, Number(value.confidence) || 0)),
     notes: String(value.notes || "").trim().slice(0, 180)

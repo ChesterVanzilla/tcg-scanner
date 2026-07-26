@@ -42,6 +42,23 @@
     return `${url.replace(/\/$/, "")}/${quality}.webp`;
   }
 
+  function setAssetSources(set) {
+    return [set?.logo, set?.fallbackLogo, set?.symbol, set?.fallbackSymbol, "icons/card-placeholder.svg"]
+      .map(value => String(value || "").trim())
+      .filter((value, index, array) => value && array.indexOf(value) === index);
+  }
+
+  function applyImageFallback(image, sources) {
+    const queue = [...sources];
+    const loadNext = () => {
+      const next = queue.shift();
+      if (!next) return;
+      image.src = next;
+    };
+    image.onerror = loadNext;
+    loadNext();
+  }
+
   function createEmpty(title, text) {
     const box = document.createElement("div");
     box.className = "set-empty-state";
@@ -173,11 +190,7 @@
     const image = document.createElement("img");
     image.loading = "lazy";
     image.alt = `${set.name} Logo`;
-    image.src = set.logo || set.symbol || "icons/card-placeholder.svg";
-    image.onerror = () => {
-      if (set.symbol && image.src !== set.symbol) image.src = set.symbol;
-      else image.src = "icons/card-placeholder.svg";
-    };
+    applyImageFallback(image, setAssetSources(set));
     visual.append(image);
 
     const body = document.createElement("span");
@@ -311,9 +324,20 @@
     return true;
   }
 
+  function cardmarketCard(set, card) {
+    return {
+      ...card,
+      set: { ...set, ...(card.set || {}) },
+      setId: card.setId || set.id,
+      setName: card.setName || set.name,
+      cardmarketSetCode: card.cardmarketSetCode || set.cardmarketSetCode || ""
+    };
+  }
+
   function buildCardmarketUrl(set, card) {
-    const query = [card.name, set.name, card.localId].filter(Boolean).join(" ");
-    return window.CardDexCore?.buildCardmarketSearchUrl?.(query) || "https://www.cardmarket.com/de/Pokemon/Products/Search";
+    return window.CardDexCore?.getCardmarketUrl?.(cardmarketCard(set, card))
+      || window.CardDexCore?.buildCardmarketSearchUrl?.([card.name, set.cardmarketSetCode, card.localId].filter(Boolean).join(" "))
+      || "https://www.cardmarket.com/de/Pokemon/Products/Search";
   }
 
   function createSetDetailCard(set, card) {
@@ -380,6 +404,10 @@
     market.target = "_blank";
     market.rel = "noopener noreferrer";
     market.textContent = "Cardmarket";
+    market.addEventListener("click", event => {
+      event.preventDefault();
+      window.CardDexCore?.openCardmarket?.(cardmarketCard(set, card), { language: card.dataLanguage || set.language || "de" });
+    });
     actions.append(market);
 
     if (card.ownedEntries?.length) {
@@ -420,12 +448,8 @@
     const set = result.set;
     const logo = $("#setDetailLogo");
     if (logo) {
-      logo.src = set.logo || set.symbol || "icons/card-placeholder.svg";
       logo.alt = `${set.name} Logo`;
-      logo.onerror = () => {
-        if (set.symbol && logo.src !== set.symbol) logo.src = set.symbol;
-        else logo.src = "icons/card-placeholder.svg";
-      };
+      applyImageFallback(logo, setAssetSources(set));
     }
     setText("#setDetailName", set.name);
     setText("#setDetailCode", String(set.id || "").toUpperCase());

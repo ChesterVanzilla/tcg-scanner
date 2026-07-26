@@ -4,8 +4,8 @@
   const DB_NAME = "carddex-ai";
   const DB_VERSION = 2;
   const API_BASE = "https://api.tcgdex.net/v2";
-  const CATALOG_CACHE_KEY = "carddex-v612-set-catalog";
-  const DETAIL_CACHE_KEY = "carddex-v613-set-details";
+  const CATALOG_CACHE_KEY = "carddex-v6131-set-catalog";
+  const DETAIL_CACHE_KEY = "carddex-v6131-set-details";
   const PROJECTS_KEY = "carddex-v613-set-projects";
   const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
   const DETAIL_MAX_AGE = 14 * 24 * 60 * 60 * 1000;
@@ -145,6 +145,26 @@
     return `${url}.${format}`;
   }
 
+  function trainerGalleryParentSetId(value) {
+    const id = normalizeSetId(value);
+    const match = id.match(/^swsh(\d+)\.5tg$/);
+    return match ? `swsh${match[1]}` : "";
+  }
+
+  function applySetAssetFallbacks(sets = []) {
+    const byId = new Map(sets.map(set => [normalizeSetId(set.id), set]));
+    return sets.map(set => {
+      const parentId = trainerGalleryParentSetId(set.id);
+      const parent = parentId ? byId.get(parentId) : null;
+      return {
+        ...set,
+        parentSetId: parentId,
+        fallbackLogo: set.fallbackLogo || parent?.logo || parent?.fallbackLogo || "",
+        fallbackSymbol: set.fallbackSymbol || parent?.symbol || parent?.fallbackSymbol || ""
+      };
+    });
+  }
+
   function isFresh(timestamp, maxAge) {
     const time = Number(timestamp || 0);
     return Number.isFinite(time) && Date.now() - time < maxAge;
@@ -182,22 +202,28 @@
   }
 
   function normalizeSetBrief(set, language = "de") {
-    return {
+    const normalized = {
       id: String(set?.id || ""),
       name: String(set?.name || set?.id || "Unbekanntes Set"),
       logo: assetUrl(set?.logo),
       symbol: assetUrl(set?.symbol),
+      fallbackLogo: assetUrl(set?.fallbackLogo),
+      fallbackSymbol: assetUrl(set?.fallbackSymbol),
       language,
       cardCount: {
         total: Math.max(0, Number(set?.cardCount?.total || 0)),
         official: Math.max(0, Number(set?.cardCount?.official || 0))
       },
       releaseDate: String(set?.releaseDate || set?.release?.official || ""),
+      tcgOnline: String(set?.tcgOnline || set?.ptcgoCode || ""),
+      abbreviations: set?.abbreviations && typeof set.abbreviations === "object" ? { ...set.abbreviations } : null,
       serie: set?.serie ? {
         id: String(set.serie.id || ""),
         name: String(set.serie.name || "")
       } : null
     };
+    normalized.cardmarketSetCode = window.CardDexCore?.deriveCardmarketSetCode?.(normalized) || "";
+    return normalized;
   }
 
   function compareCardNumbers(a, b) {
@@ -218,6 +244,9 @@
       category: String(card?.category || ""),
       illustrator: String(card?.illustrator || ""),
       variants: card?.variants || null,
+      thirdParty: card?.thirdParty || null,
+      cardmarketProductId: window.CardDexCore?.extractCardmarketProductId?.(card) || "",
+      cardmarketSetCode: window.CardDexCore?.deriveCardmarketSetCode?.({ ...card, set }) || set.cardmarketSetCode || "",
       setId: set.id,
       setName: set.name,
       officialTotal: set.cardCount.official || null,
@@ -229,6 +258,11 @@
         name: set.name,
         logo: set.logo,
         symbol: set.symbol,
+        fallbackLogo: set.fallbackLogo || "",
+        fallbackSymbol: set.fallbackSymbol || "",
+        tcgOnline: set.tcgOnline || "",
+        abbreviations: set.abbreviations || null,
+        cardmarketSetCode: set.cardmarketSetCode || "",
         cardCount: { ...set.cardCount }
       }
     };
@@ -248,9 +282,10 @@
 
     try {
       const result = await fetchWithLanguageFallback("sets", language);
-      const data = Array.isArray(result.data)
+      const normalizedSets = Array.isArray(result.data)
         ? result.data.map(set => normalizeSetBrief(set, result.language)).filter(set => set.id)
         : [];
+      const data = applySetAssetFallbacks(normalizedSets);
       data.sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
       const record = { timestamp: Date.now(), language: result.language, data };
       catalogMemory = record;
@@ -296,7 +331,14 @@
 
     try {
       const result = await fetchWithLanguageFallback(`sets/${encodeURIComponent(cleanSetId)}`, language);
-      const set = normalizeSetBrief(result.data, result.language);
+      let set = normalizeSetBrief(result.data, result.language);
+      try {
+        const catalog = await getSetCatalog(result.language);
+        const catalogSet = catalog.data?.find(item => normalizeSetId(item.id) === cleanSetId);
+        if (catalogSet) set = { ...catalogSet, ...set, fallbackLogo: set.fallbackLogo || catalogSet.fallbackLogo || "", fallbackSymbol: set.fallbackSymbol || catalogSet.fallbackSymbol || "" };
+      } catch {
+        // Das Set selbst bleibt auch ohne Katalog-Fallback nutzbar.
+      }
       const cards = Array.isArray(result.data?.cards)
         ? result.data.cards.map(card => normalizeSetCard(card, set, result.language)).sort(compareCardNumbers)
         : [];
@@ -366,9 +408,25 @@
         name: card.setName || card.set?.name || card._setBrief?.name || setId,
         logo: assetUrl(card.set?.logo || card._setBrief?.logo),
         symbol: assetUrl(card.set?.symbol || card._setBrief?.symbol),
+        fallbackLogo: assetUrl(card.set?.fallbackLogo || card._setBrief?.fallbackLogo),
+        fallbackSymbol: assetUrl(card.set?.fallbackSymbol || card._setBrief?.fallbackSymbol),
+        cardmarketSetCode: card.cardmarketSetCode
+          || card.set?.cardmarketSetCode
+          || card._setBrief?.cardmarketSetCode
+          || window.CardDexCore?.deriveCardmarketSetCode?.(card)
+          || "",
         officialTotal: Math.max(0, Number(card.officialTotal || card.set?.cardCount?.official || card._setBrief?.cardCount?.official || 0)),
         total: Math.max(0, Number(card.set?.cardCount?.total || card._setBrief?.cardCount?.total || 0))
       };
+      if (!existingMeta.fallbackLogo) existingMeta.fallbackLogo = assetUrl(card.set?.fallbackLogo || card._setBrief?.fallbackLogo);
+      if (!existingMeta.fallbackSymbol) existingMeta.fallbackSymbol = assetUrl(card.set?.fallbackSymbol || card._setBrief?.fallbackSymbol);
+      if (!existingMeta.cardmarketSetCode) {
+        existingMeta.cardmarketSetCode = card.cardmarketSetCode
+          || card.set?.cardmarketSetCode
+          || card._setBrief?.cardmarketSetCode
+          || window.CardDexCore?.deriveCardmarketSetCode?.(card)
+          || "";
+      }
       existingMeta.officialTotal = Math.max(existingMeta.officialTotal, Number(card.officialTotal || 0));
       setMeta.set(setId, existingMeta);
     });
@@ -424,6 +482,9 @@
         name: fallback.name,
         logo: fallback.logo || "",
         symbol: fallback.symbol || "",
+        fallbackLogo: fallback.fallbackLogo || "",
+        fallbackSymbol: fallback.fallbackSymbol || "",
+        cardmarketSetCode: fallback.cardmarketSetCode || "",
         cardCount: { total: fallback.total || fallback.officialTotal || 0, official: fallback.officialTotal || 0 },
         language
       };
@@ -461,6 +522,9 @@
       name: fallback.name,
       logo: fallback.logo || "",
       symbol: fallback.symbol || "",
+      fallbackLogo: fallback.fallbackLogo || "",
+      fallbackSymbol: fallback.fallbackSymbol || "",
+      cardmarketSetCode: fallback.cardmarketSetCode || "",
       cardCount: { total: fallback.total || fallback.officialTotal || 0, official: fallback.officialTotal || 0 },
       cards: []
     };
@@ -481,6 +545,9 @@
             directImage: Boolean(item.card.directImage),
             rarity: item.card.rarity || "",
             category: item.card.category || "",
+            cardmarketProductId: item.card.cardmarketProductId || "",
+            cardmarketSetCode: item.card.cardmarketSetCode || set.cardmarketSetCode || "",
+            thirdParty: item.card.thirdParty || null,
             setId: cleanSetId,
             setName: set.name,
             officialTotal: set.cardCount?.official || item.card.officialTotal || null,
@@ -491,6 +558,9 @@
               name: set.name,
               logo: set.logo,
               symbol: set.symbol,
+              fallbackLogo: set.fallbackLogo || "",
+              fallbackSymbol: set.fallbackSymbol || "",
+              cardmarketSetCode: set.cardmarketSetCode || "",
               cardCount: { ...set.cardCount }
             },
             unlisted: true
@@ -535,6 +605,9 @@
       category: String(card.category || ""),
       illustrator: String(card.illustrator || ""),
       variants: card.variants || null,
+      thirdParty: card.thirdParty || null,
+      cardmarketProductId: card.cardmarketProductId || window.CardDexCore?.extractCardmarketProductId?.(card) || "",
+      cardmarketSetCode: card.cardmarketSetCode || set.cardmarketSetCode || window.CardDexCore?.deriveCardmarketSetCode?.({ ...card, set }) || "",
       source: card.source || "tcgdex",
       dataLanguage: card.dataLanguage || card._dataLanguage || set.language || "de",
       _dataLanguage: card._dataLanguage || card.dataLanguage || set.language || "de",
@@ -543,6 +616,11 @@
         name: set.name,
         logo: set.logo,
         symbol: set.symbol,
+        fallbackLogo: set.fallbackLogo || "",
+        fallbackSymbol: set.fallbackSymbol || "",
+        tcgOnline: set.tcgOnline || "",
+        abbreviations: set.abbreviations || null,
+        cardmarketSetCode: set.cardmarketSetCode || "",
         cardCount: { ...set.cardCount }
       }
     };
@@ -550,7 +628,7 @@
 
   async function init() {
     await openDatabase();
-    window.CardDexCore?.emit?.("sets-ready", { version: window.CardDexCore?.version || "6.13" });
+    window.CardDexCore?.emit?.("sets-ready", { version: window.CardDexCore?.version || "6.13.1" });
   }
 
   window.CardDexSetEngine = Object.freeze({
@@ -569,6 +647,8 @@
     normalizeSetId,
     normalizeLocalId,
     cardKey,
-    assetUrl
+    assetUrl,
+    trainerGalleryParentSetId,
+    applySetAssetFallbacks
   });
 })();

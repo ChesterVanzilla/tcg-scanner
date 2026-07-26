@@ -104,6 +104,7 @@
         types: Array.isArray(card.types) ? card.types.slice(0, 4) : [],
         variants: card.variants || null,
         pricing: card.pricing || null,
+        cardmarketProductId: String(card.cardmarketProductId || window.CardDexCore?.extractCardmarketProductId?.(card) || ""),
         cardmarketUrl: String(card.cardmarketUrl || ""),
         cardmarketSetCode: String(card.cardmarketSetCode || ""),
         pokemonTcgId: String(card.pokemonTcgId || ""),
