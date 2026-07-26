@@ -17,6 +17,8 @@
 
   function switchView(view, options = {}) {
     const next = VIEW_IDS.includes(view) ? view : "dashboard";
+    const previous = activeView;
+    if (previous === "sets" && next !== "sets") window.CardDexSetsUI?.rememberScrollPosition?.();
     activeView = next;
     VIEW_IDS.forEach(name => {
       $(`#${name}View`)?.classList.toggle("hidden", name !== next);
@@ -28,11 +30,12 @@
 
     if (next === "collection") window.CardDexCollections?.refresh?.();
     if (next === "dashboard") void renderDashboard();
-    if (next === "sets") window.CardDexSetsUI?.activate?.();
+    if (next === "sets") window.CardDexSetsUI?.activate?.({ restoreScroll: previous !== "sets" });
     if (next === "insights") window.CardDexInsightsUI?.activate?.();
     if (next === "history") void renderHistory();
 
-    if (!options.keepScroll) window.scrollTo({ top: 0, behavior: options.instant ? "auto" : "smooth" });
+    const setRestoresScroll = next === "sets" && previous !== "sets";
+    if (!options.keepScroll && !setRestoresScroll) window.scrollTo({ top: 0, behavior: options.instant ? "auto" : "smooth" });
     window.CardDexCore?.emit?.("view-changed", { view: next });
   }
 

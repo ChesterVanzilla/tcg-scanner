@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=615" />
+  <link rel="stylesheet" href="styles.css?v=6151" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.15</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.15.1</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -87,7 +87,7 @@
       <div id="dashboardView">
         <section class="panel dashboard-hero-panel">
           <div class="section-heading">
-            <div class="step-badge">615</div>
+            <div class="step-badge">6151</div>
             <div>
               <p class="panel-kicker">LIBRARY-MODUS</p>
               <h2>Dein CardDex auf einen Blick</h2>
@@ -146,7 +146,7 @@
       <div id="insightsView" class="hidden">
         <section class="panel insights-hero-panel">
           <div class="section-heading insights-heading">
-            <div class="step-badge">615</div>
+            <div class="step-badge">6151</div>
             <div>
               <p class="panel-kicker">INSIGHTS-MODUS</p>
               <h2>Deine Sammlung in Zahlen</h2>
@@ -534,7 +534,11 @@
 
         <section id="setDetailPanel" class="panel set-detail-panel hidden">
           <div class="set-detail-topbar">
-            <button id="backToSetOverviewButton" class="mini-system-button" type="button">‹ Alle Sets</button>
+            <button id="backToSetOverviewButton" class="mini-system-button" type="button">‹ Sets</button>
+            <div class="set-detail-sticky-summary" aria-live="polite">
+              <strong id="setStickyName">Pokémon-Set</strong>
+              <span id="setStickyProgress">0 % · 0 / 0</span>
+            </div>
             <div class="set-detail-topbar-actions">
               <button id="setDetailProjectButton" class="mini-system-button set-project-detail-button" type="button" aria-pressed="false">☆ Als Projekt merken</button>
               <button id="refreshSetDetailButton" class="mini-system-button" type="button">Aktualisieren</button>
@@ -622,6 +626,21 @@
         </section>
       </div>
 
+      <div id="setFloatingNavigation" class="set-floating-navigation hidden" aria-label="Set-Schnellnavigation">
+        <button id="openSetJumpMenuButton" class="set-floating-button set-floating-menu-button" type="button" aria-label="Sprungmarken öffnen" aria-expanded="false">☰</button>
+        <button id="setScrollTopButton" class="set-floating-button" type="button" aria-label="Zum Anfang der Set-Ansicht">↑</button>
+      </div>
+
+      <div id="setJumpMenuBackdrop" class="set-jump-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="setJumpMenuTitle">
+        <section class="set-jump-sheet">
+          <div class="set-jump-sheet-header">
+            <div><span>SETDEX-NAVIGATION</span><strong id="setJumpMenuTitle">Schnell springen</strong></div>
+            <button id="closeSetJumpMenuButton" type="button" aria-label="Sprungmenü schließen">×</button>
+          </div>
+          <div id="setJumpMenuActions" class="set-jump-actions"></div>
+        </section>
+      </div>
+
       <div id="historyView" class="hidden">
         <section class="panel history-panel">
           <div class="section-heading">
@@ -659,7 +678,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.15 · INSIGHTS</span>
+        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.15.1 · SET NAVIGATION</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -873,7 +892,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong id="settingsAppVersion">v6.15</strong></div>
+          <div><span>APP</span><strong id="settingsAppVersion">v6.15.1</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -935,15 +954,15 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=615" defer></script>
-  <script src="collection.js?v=615" defer></script>
-  <script src="library-engine.js?v=615" defer></script>
-  <script src="set-engine.js?v=615" defer></script>
-  <script src="insights-engine.js?v=615" defer></script>
-  <script src="set-ui.js?v=615" defer></script>
-  <script src="insights-ui.js?v=615" defer></script>
-  <script src="library-ui.js?v=615" defer></script>
-  <script src="app.js?v=615" defer></script>
+  <script src="carddex-core.js?v=6151" defer></script>
+  <script src="collection.js?v=6151" defer></script>
+  <script src="library-engine.js?v=6151" defer></script>
+  <script src="set-engine.js?v=6151" defer></script>
+  <script src="insights-engine.js?v=6151" defer></script>
+  <script src="set-ui.js?v=6151" defer></script>
+  <script src="insights-ui.js?v=6151" defer></script>
+  <script src="library-ui.js?v=6151" defer></script>
+  <script src="app.js?v=6151" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

@@ -400,7 +400,7 @@
 
   async function init() {
     await openDatabase();
-    window.CardDexCore?.emit?.("insights-ready", { version: window.CardDexCore?.version || "6.15" });
+    window.CardDexCore?.emit?.("insights-ready", { version: window.CardDexCore?.version || "6.15.1" });
   }
 
   window.CardDexInsightsEngine = Object.freeze({

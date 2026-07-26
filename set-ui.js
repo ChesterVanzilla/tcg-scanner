@@ -16,6 +16,12 @@
   let selectionMode = false;
   const selectedCardKeys = new Set();
   const expandedDuplicateKeys = new Set();
+  const detailScrollPositions = new Map();
+  let overviewScrollTop = 0;
+  let lastOpenedOverviewSetId = "";
+  let scrollUpdateScheduled = false;
+  let suppressScrollTracking = false;
+  let jumpMenuOpen = false;
 
   const $ = selector => document.querySelector(selector);
 
@@ -102,6 +108,136 @@
   function setOverviewPanels(showDetail) {
     $("#setOverviewPanel")?.classList.toggle("hidden", showDetail);
     $("#setDetailPanel")?.classList.toggle("hidden", !showDetail);
+  }
+
+  function isSetsViewActive() {
+    const view = $("#setsView");
+    return Boolean(view && !view.classList.contains("hidden") && window.CardDexLibrary?.getActiveView?.() === "sets");
+  }
+
+  function currentScrollPosition() {
+    return Math.max(0, Number(window.scrollY || document.documentElement.scrollTop || 0));
+  }
+
+  function rememberScrollPosition() {
+    if (suppressScrollTracking || !isSetsViewActive()) return;
+    const top = currentScrollPosition();
+    if (selectedSetId) detailScrollPositions.set(selectedSetId, top);
+    else overviewScrollTop = top;
+  }
+
+  function getSavedScrollPosition() {
+    return selectedSetId ? Number(detailScrollPositions.get(selectedSetId) || 0) : Number(overviewScrollTop || 0);
+  }
+
+  function restoreScrollPosition(target = getSavedScrollPosition(), behavior = "auto") {
+    const top = Math.max(0, Number(target || 0));
+    suppressScrollTracking = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.scrollTo({ top, behavior });
+      updateFloatingNavigation();
+      window.setTimeout(() => {
+        suppressScrollTracking = false;
+        rememberScrollPosition();
+        updateFloatingNavigation();
+      }, behavior === "smooth" ? 420 : 80);
+    }));
+  }
+
+  function restoreElementPosition(element, block = "start") {
+    if (!element) return;
+    suppressScrollTracking = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: "auto", block, inline: "nearest" });
+      updateFloatingNavigation();
+      window.setTimeout(() => {
+        suppressScrollTracking = false;
+        rememberScrollPosition();
+        updateFloatingNavigation();
+      }, 100);
+    }));
+  }
+
+  function panelTop(element) {
+    if (!element) return 0;
+    const rect = element.getBoundingClientRect();
+    const stickyOffset = selectedSetId && element.id !== "setDetailPanel"
+      ? Number($("#setDetailPanel .set-detail-topbar")?.offsetHeight || 0) + 16
+      : 8;
+    return Math.max(0, currentScrollPosition() + rect.top - stickyOffset);
+  }
+
+  function closeJumpMenu() {
+    jumpMenuOpen = false;
+    $("#setJumpMenuBackdrop")?.classList.add("hidden");
+    $("#openSetJumpMenuButton")?.setAttribute("aria-expanded", "false");
+    document.documentElement.classList.remove("set-jump-open");
+  }
+
+  function jumpToTarget(target) {
+    closeJumpMenu();
+    if (target === "end") {
+      window.scrollTo({ top: Math.max(0, document.documentElement.scrollHeight - window.innerHeight), behavior: "smooth" });
+      return;
+    }
+    const element = typeof target === "string" ? $(target) : target;
+    if (!element) return;
+    window.scrollTo({ top: panelTop(element), behavior: "smooth" });
+  }
+
+  function getJumpActions() {
+    if (selectedSetId) {
+      return [
+        { label: "Set-Kopf", hint: "Fortschritt und Sammelziel", target: "#setDetailPanel" },
+        { label: "Filter & Suche", hint: "Kartenansicht wechseln", target: ".set-detail-browser" },
+        { label: "Reguläre Karten", hint: "Zum Beginn der Kartenliste", target: "#setRegularCardsAnchor" },
+        { label: "Secret Rares", hint: "Zum ersten Secret-Rare-Eintrag", target: "#setSecretCardsAnchor" },
+        { label: "Listenende", hint: "Zur letzten angezeigten Karte", target: "end" }
+      ];
+    }
+    return [
+      { label: "Set-Übersicht", hint: "Statistik und SetDex-Kopf", target: "#setOverviewPanel" },
+      { label: "Filter & Suche", hint: "Sets durchsuchen und sortieren", target: ".set-browser" },
+      { label: "Setliste", hint: "Zum ersten Set", target: "#setOverviewGrid" },
+      { label: "Listenende", hint: "Zum Ende der Setliste", target: "end" }
+    ];
+  }
+
+  function openJumpMenu() {
+    const container = $("#setJumpMenuActions");
+    const backdrop = $("#setJumpMenuBackdrop");
+    if (!container || !backdrop) return;
+    container.innerHTML = "";
+    getJumpActions().forEach(action => {
+      if (action.target !== "end" && !$(action.target)) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.innerHTML = `<strong>${escapeHtml(action.label)}</strong><span>${escapeHtml(action.hint)}</span>`;
+      button.addEventListener("click", () => jumpToTarget(action.target));
+      container.append(button);
+    });
+    jumpMenuOpen = true;
+    backdrop.classList.remove("hidden");
+    $("#openSetJumpMenuButton")?.setAttribute("aria-expanded", "true");
+    document.documentElement.classList.add("set-jump-open");
+  }
+
+  function updateFloatingNavigation() {
+    const navigation = $("#setFloatingNavigation");
+    if (!navigation) return;
+    const threshold = Math.max(380, window.innerHeight * 0.72);
+    navigation.classList.toggle("hidden", !isSetsViewActive() || currentScrollPosition() < threshold);
+    if (!isSetsViewActive() && jumpMenuOpen) closeJumpMenu();
+  }
+
+  function scheduleScrollUpdate() {
+    if (scrollUpdateScheduled) return;
+    scrollUpdateScheduled = true;
+    requestAnimationFrame(() => {
+      scrollUpdateScheduled = false;
+      if (!suppressScrollTracking) rememberScrollPosition();
+      updateFloatingNavigation();
+    });
   }
 
   function updateOverviewChipState() {
@@ -365,14 +501,20 @@
               ? "Markiere ein Set mit dem Stern, um es hier als persönliches Sammelprojekt zu verfolgen."
               : "Passe Suche oder Filter an."
         ));
+        if (options.restoreScroll) restoreScrollPosition();
+        else updateFloatingNavigation();
         return;
       }
       sets.forEach(set => list.append(createSetCard(set)));
+      if (options.restoreScroll) restoreScrollPosition();
+      else updateFloatingNavigation();
     } catch (error) {
       if (token !== overviewToken) return;
       list.innerHTML = "";
       list.append(createEmpty("SET-DATEN NICHT VERFÜGBAR", "Prüfe deine Internetverbindung und versuche es erneut."));
       console.error(error);
+      if (options.restoreScroll) restoreScrollPosition();
+      else updateFloatingNavigation();
     }
   }
 
@@ -638,6 +780,8 @@
     }
     setText("#setDetailName", set.name);
     setText("#setDetailCode", String(set.id || "").toUpperCase());
+    setText("#setStickyName", set.name);
+    setText("#setStickyProgress", `${goal.progress} % · ${formatCount(goal.owned)} / ${formatCount(goal.target || 0)}`);
     setText("#setDetailOwnedCount", goal.owned);
     setText("#setDetailTotalCount", goal.target || "–");
     setText("#setDetailProgressUnit", goal.goal === "numbers" ? "Karten" : "Sammelziele");
@@ -677,8 +821,26 @@
       updateSelectionToolbar();
       return;
     }
-    visibleDetailCards.forEach(card => list.append(createSetDetailCard(currentDetail.set, card)));
+    const officialTotal = Number(currentDetail.set?.cardCount?.official || 0);
+    let regularAnchorAssigned = false;
+    let secretAnchorAssigned = false;
+    visibleDetailCards.forEach(card => {
+      const article = createSetDetailCard(currentDetail.set, card);
+      const match = String(card.localId || "").match(/^(\d+)/);
+      const secret = Boolean(match && officialTotal && Number(match[1]) > officialTotal);
+      article.dataset.setZone = secret ? "secret" : "regular";
+      if (!secret && !regularAnchorAssigned) {
+        article.id = "setRegularCardsAnchor";
+        regularAnchorAssigned = true;
+      }
+      if (secret && !secretAnchorAssigned) {
+        article.id = "setSecretCardsAnchor";
+        secretAnchorAssigned = true;
+      }
+      list.append(article);
+    });
     updateSelectionToolbar();
+    updateFloatingNavigation();
   }
 
   async function renderDetail(options = {}) {
@@ -715,29 +877,42 @@
       }
 
       await renderDetailCardsOnly();
+      if (options.restoreScroll) restoreScrollPosition();
+      else updateFloatingNavigation();
     } catch (error) {
       if (token !== detailToken) return;
       list.innerHTML = "";
       list.append(createEmpty("SET KONNTE NICHT GELADEN WERDEN", "Prüfe die Verbindung und versuche es erneut."));
       console.error(error);
+      if (options.restoreScroll) restoreScrollPosition();
+      else updateFloatingNavigation();
     }
   }
 
   function openSet(setId) {
-    selectedSetId = String(setId || "");
+    rememberScrollPosition();
+    suppressScrollTracking = true;
+    lastOpenedOverviewSetId = String(setId || "");
+    selectedSetId = lastOpenedOverviewSetId;
     detailFilter = "all";
     detailSearch = "";
     selectionMode = false;
     selectedCardKeys.clear();
     expandedDuplicateKeys.clear();
+    if (!detailScrollPositions.has(selectedSetId)) detailScrollPositions.set(selectedSetId, 0);
     if ($("#setDetailSearchInput")) $("#setDetailSearchInput").value = "";
     updateDetailChipState();
     setOverviewPanels(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    closeJumpMenu();
+    restoreElementPosition($("#setDetailPanel"), "start");
     void renderDetail();
   }
 
   function closeSetDetail() {
+    rememberScrollPosition();
+    const setId = lastOpenedOverviewSetId;
+    const fallbackTop = Number(overviewScrollTop || 0);
+    suppressScrollTracking = true;
     selectedSetId = "";
     currentDetail = null;
     visibleDetailCards = [];
@@ -746,7 +921,10 @@
     expandedDuplicateKeys.clear();
     updateSelectionToolbar();
     setOverviewPanels(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    closeJumpMenu();
+    const targetCard = setId ? document.querySelector(`[data-set-id="${CSS.escape(setId)}"]`) : null;
+    if (targetCard) restoreElementPosition(targetCard, "center");
+    else restoreScrollPosition(fallbackTop);
   }
 
   function wireOverviewControls() {
@@ -767,7 +945,10 @@
       if ($("#setOverviewSearchInput")) $("#setOverviewSearchInput").value = "";
       void renderOverview();
     });
-    $("#refreshSetOverviewButton")?.addEventListener("click", () => void renderOverview({ force: true }));
+    $("#refreshSetOverviewButton")?.addEventListener("click", () => {
+      rememberScrollPosition();
+      void renderOverview({ force: true, restoreScroll: true });
+    });
     document.querySelectorAll("[data-set-overview-filter]").forEach(button => {
       button.addEventListener("click", () => {
         overviewFilter = button.dataset.setOverviewFilter || "all";
@@ -779,7 +960,10 @@
 
   function wireDetailControls() {
     $("#backToSetOverviewButton")?.addEventListener("click", closeSetDetail);
-    $("#refreshSetDetailButton")?.addEventListener("click", () => void renderDetail({ force: true }));
+    $("#refreshSetDetailButton")?.addEventListener("click", () => {
+      rememberScrollPosition();
+      void renderDetail({ force: true, restoreScroll: true });
+    });
     $("#setDetailProjectButton")?.addEventListener("click", () => {
       if (!selectedSetId) return;
       void toggleProject(selectedSetId, $("#setDetailProjectButton"));
@@ -859,33 +1043,60 @@
     });
   }
 
+  function wireNavigationControls() {
+    $("#setScrollTopButton")?.addEventListener("click", () => {
+      const panel = selectedSetId ? $("#setDetailPanel") : $("#setOverviewPanel");
+      window.scrollTo({ top: panelTop(panel), behavior: "smooth" });
+    });
+    $("#openSetJumpMenuButton")?.addEventListener("click", () => {
+      if (jumpMenuOpen) closeJumpMenu();
+      else openJumpMenu();
+    });
+    $("#closeSetJumpMenuButton")?.addEventListener("click", closeJumpMenu);
+    $("#setJumpMenuBackdrop")?.addEventListener("click", event => {
+      if (event.target === event.currentTarget) closeJumpMenu();
+    });
+    window.addEventListener("keydown", event => {
+      if (event.key === "Escape" && jumpMenuOpen) closeJumpMenu();
+    });
+    window.addEventListener("scroll", scheduleScrollUpdate, { passive: true });
+    window.addEventListener("resize", updateFloatingNavigation, { passive: true });
+  }
+
   async function init() {
     if (initialized) return;
     initialized = true;
     await window.CardDexSetEngine?.init?.();
     wireOverviewControls();
     wireDetailControls();
+    wireNavigationControls();
     updateOverviewChipState();
     updateDetailChipState();
     window.CardDexCore?.on?.("collection-changed", () => {
       if (window.CardDexLibrary?.getActiveView?.() !== "sets") return;
-      if (selectedSetId) void renderDetail();
-      else void renderOverview();
+      rememberScrollPosition();
+      if (selectedSetId) void renderDetail({ restoreScroll: true });
+      else void renderOverview({ restoreScroll: true });
     });
     window.CardDexCore?.on?.("set-projects-changed", () => {
       if (window.CardDexLibrary?.getActiveView?.() !== "sets") return;
-      if (selectedSetId) void renderDetail();
-      else void renderOverview();
+      rememberScrollPosition();
+      if (selectedSetId) void renderDetail({ restoreScroll: true });
+      else void renderOverview({ restoreScroll: true });
     });
     window.CardDexCore?.on?.("set-project-settings-changed", () => {
       if (window.CardDexLibrary?.getActiveView?.() !== "sets" || !selectedSetId) return;
-      void renderDetail();
+      rememberScrollPosition();
+      void renderDetail({ restoreScroll: true });
     });
+    window.CardDexCore?.on?.("view-changed", () => updateFloatingNavigation());
   }
 
-  function activate() {
-    if (selectedSetId) void renderDetail();
-    else void renderOverview();
+  function activate(options = {}) {
+    const restoreScroll = Boolean(options.restoreScroll);
+    if (selectedSetId) void renderDetail({ restoreScroll });
+    else void renderOverview({ restoreScroll });
+    updateFloatingNavigation();
   }
 
   window.CardDexSetsUI = Object.freeze({
@@ -895,6 +1106,8 @@
     renderDetail,
     openSet,
     closeSetDetail,
+    rememberScrollPosition,
+    getSavedScrollPosition,
     getSelectedSetId: () => selectedSetId,
     getCurrentDetail: () => currentDetail
   });
