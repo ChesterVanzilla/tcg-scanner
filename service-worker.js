@@ -1,10 +1,12 @@
-const CACHE_NAME = "carddex-ai-v6-15-1";
+const CACHE_NAME = "carddex-ai-v7-0-evolution";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./evolution.css",
   "./carddex-core.js",
   "./app.js",
+  "./evolution-ui.js",
   "./collection.js",
   "./library-engine.js",
   "./set-engine.js",
@@ -17,6 +19,8 @@ const APP_SHELL = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-512-maskable.png",
+  "./icons/carddex-open-pokedex.png",
+  "./icons/carddex-open-pokedex-1024.png",
   "./icons/card-placeholder.svg"
 ];
 

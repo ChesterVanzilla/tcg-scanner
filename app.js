@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = window.CardDexCore?.version || "6.15.1";
+const APP_VERSION = window.CardDexCore?.version || "7.0";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -327,7 +327,7 @@ function updateDebugPanelVisibility(hasNewData = false) {
 function applyAppVersionLabels() {
   if (els.bootLine1) els.bootLine1.textContent = `CARDEX SYSTEM v${APP_VERSION}`;
   const footerVersion = document.querySelector("#footerVersionText");
-  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · SET NAVIGATION`;
+  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · EVOLUTION`;
   const settingsVersion = document.querySelector("#settingsAppVersion");
   if (settingsVersion) settingsVersion.textContent = `v${APP_VERSION}`;
 }
@@ -344,20 +344,32 @@ function initializeBootSequence() {
   if (els.bootLine3) els.bootLine3.textContent = navigator.mediaDevices?.getUserMedia ? "CAMERA: READY" : "CAMERA: FALLBACK";
   if (els.bootLine4) els.bootLine4.textContent = getAiEndpoint() ? "AI LINK: CONFIGURED" : "AI LINK: LOCAL MODE";
 
-  const steps = [
-    [180, 14, "POWER CHECK"],
-    [440, 36, "CAMERA MODULE"],
-    [720, 61, "VISION MODULE"],
-    [1010, 82, "DATABASE LINK"],
-    [1280, 100, "SYSTEM READY"]
-  ];
+  let resumed = false;
+  try { resumed = sessionStorage.getItem("carddex-v7-session-booted") === "1"; } catch { /* ignorieren */ }
+  els.bootScreen.classList.toggle("boot-resume", resumed);
+  if (els.bootLine2) els.bootLine2.textContent = resumed ? "RESUMING MODULES…" : "INITIALIZING MODULES…";
+
+  const steps = resumed
+    ? [
+        [90, 28, "POWER RESTORE"],
+        [280, 67, "DATABASE READY"],
+        [520, 100, "SYSTEM READY"]
+      ]
+    : [
+        [260, 10, "POWER CHECK"],
+        [720, 28, "CAMERA MODULE"],
+        [1210, 48, "VISION MODULE"],
+        [1710, 68, "LOCAL DATABASE"],
+        [2240, 86, "AI LINK"],
+        [2780, 100, "SYSTEM READY"]
+      ];
   for (const [delay, progress, label] of steps) {
     bootTimeouts.push(setTimeout(() => {
       if (els.bootProgressBar) els.bootProgressBar.style.width = `${progress}%`;
       if (els.bootReadyText) els.bootReadyText.textContent = label;
     }, delay));
   }
-  bootTimeouts.push(setTimeout(finishBootSequence, 1680));
+  bootTimeouts.push(setTimeout(finishBootSequence, resumed ? 820 : 3380));
 }
 
 function finishBootSequence() {
@@ -367,6 +379,7 @@ function finishBootSequence() {
   if (els.bootProgressBar) els.bootProgressBar.style.width = "100%";
   if (els.bootReadyText) els.bootReadyText.textContent = "SYSTEM READY";
   els.bootScreen.classList.add("boot-hidden");
+  try { sessionStorage.setItem("carddex-v7-session-booted", "1"); } catch { /* ignorieren */ }
   document.documentElement.classList.remove("boot-disabled");
   document.body.classList.remove("modal-open");
   setTimeout(() => {
@@ -376,7 +389,9 @@ function finishBootSequence() {
 
 function openSettingsDrawer() {
   if (!els.settingsDrawer || els.settingsDrawer.classList.contains("open")) return;
-  settingsReturnFocus = document.activeElement;
+  settingsReturnFocus = document.querySelector("#systemMenuSheet")?.contains(document.activeElement)
+    ? document.querySelector("#openSystemMenuButton")
+    : document.activeElement;
   loadAppSettings();
   els.settingsDrawer.classList.add("open");
   els.settingsBackdrop?.classList.add("open");

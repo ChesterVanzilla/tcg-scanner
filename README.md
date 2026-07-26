@@ -4,9 +4,9 @@ CardDex AI ist eine private, iPhone-optimierte Web-App zum Scannen, Erkennen und
 
 ## Aktuelle Version
 
-**v6.13.1 – MasterSet Bugfix**
+**v7.0 – Evolution**
 
-Die aktuelle Version stabilisiert die Mega-ex-Erkennung, ergänzt Trainer-Galerie-Logos und vereinheitlicht die Cardmarket-Weiterleitung in sämtlichen App-Bereichen. Für die Nutzung ist keine zusätzliche Anmeldung erforderlich.
+Die aktuelle Version führt das vollständige Pokédex-Design ein: neuer Systemstart, hochwertiger Systemkopf, feste untere Navigation, Systemmenü, überarbeitetes Scanner-Modul und ein neuer Live-Scanner. Der bestätigte Cloudflare-Worker v2.2.1 bleibt unverändert.
 
 ## Hauptfunktionen
 
@@ -17,13 +17,13 @@ Die aktuelle Version stabilisiert die Mega-ex-Erkennung, ergänzt Trainer-Galeri
 - stabile Cardmarket-Suche
 - mehrere lokale Sammlungen
 - Suche, Schnellfilter und Sortierung innerhalb jeder Sammlung
-- automatische Erkennung und Kennzeichnung doppelter Karten
+- Varianten-genaue Erkennung und Verwaltung doppelter Karten
 - Set-Übersicht mit Fortschritt, fehlenden Karten und Dubletten
-- persönliche Set-Projekte mit gesammelter Fehlkarten-Wunschliste
+- persönliche Set-Projekte mit frei wählbarem Sammelziel und Mehrfachauswahl
 - vollständige Set-Kartenlisten mit Wunschlisten- und Cardmarket-Aktionen
 - Mengen, Sprache, Variante, Zustand, Kaufpreis, Kaufdatum und Notizen
 - automatische Bild-Rückfallebenen
-- lokales Dashboard
+- lokales Dashboard und ausführliche Insights-Statistik
 - Scannerhistorie mit Verifizierungsstatus
 - JSON-Sicherung und Wiederherstellung
 - installierbar als PWA auf dem iPhone
@@ -39,14 +39,18 @@ Die aktuelle Version stabilisiert die Mega-ex-Erkennung, ergänzt Trainer-Galeri
 ## Projektstruktur
 
 - `index.html` – Oberfläche
-- `styles.css` – Gestaltung
+- `styles.css` – bestehende Grundgestaltung
+- `evolution.css` – zusammenhängendes v7.0-Pokédex-Design
 - `app.js` – Scanner und Erkennung
 - `collection.js` – Sammlungsdatenbank
 - `carddex-core.js` – gemeinsame Kernfunktionen
 - `library-engine.js` – Historie und Dashboard-Daten
-- `library-ui.js` – Library-Oberfläche und Navigation
+- `library-ui.js` – Library-Oberfläche und Ansichtswechsel
+- `evolution-ui.js` – Systemmenü, feste Navigation und v7.0-Statussteuerung
 - `set-engine.js` – Set-Katalog, Fortschrittsberechnung und lokaler Set-Cache
 - `set-ui.js` – Set-Übersicht und Kartenlisten
+- `insights-engine.js` – lokale Statistikberechnung
+- `insights-ui.js` – Insights-Oberfläche und Aktivitätsdiagramm
 - `service-worker.js` – Offline-Cache und PWA-Aktualisierung
 - `src.js` – optionaler Cloudflare-Worker
 
@@ -80,3 +84,23 @@ Siehe `README-V6.13.md`.
 ## v6.13.1 – MasterSet Bugfix
 
 Siehe `README-V6.13.1.md`.
+
+
+## v6.14 – Completion
+
+Siehe `README-V6.14.md`.
+
+
+## v6.15 – Insights
+
+Siehe `README-V6.15.md`.
+
+
+## v6.15.1 – Set Navigation Fix
+
+Siehe `README-V6.15.1.md`.
+
+
+## v7.0 – Evolution
+
+Siehe `README-V7.0.md`.

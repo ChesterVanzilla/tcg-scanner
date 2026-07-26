@@ -547,7 +547,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: window.CardDexCore?.version || "6.15.1",
+      appVersion: window.CardDexCore?.version || "7.0",
       setProjects: window.CardDexSetEngine?.getSetProjects?.() || [],
       setProjectSettings: window.CardDexSetEngine?.getAllProjectSettings?.() || {},
       backupVersion: BACKUP_VERSION,

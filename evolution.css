@@ -1,0 +1,890 @@
+/* CardDex AI v7.0 — Evolution UI
+   Reines Design- und Bedienungsupdate. Funktionslogik bleibt unverändert. */
+
+:root {
+  --evo-red: #ef3837;
+  --evo-red-bright: #ff504d;
+  --evo-red-dark: #a7191c;
+  --evo-red-deep: #5d1014;
+  --evo-shell: #171d1a;
+  --evo-screen: #09110d;
+  --evo-screen-2: #0e1812;
+  --evo-line: #3d4941;
+  --evo-line-bright: #68736b;
+  --evo-text: #eff4ea;
+  --evo-muted: #99a49a;
+  --evo-green: #62d66c;
+  --evo-blue: #26aee8;
+  --evo-amber: #ffd14d;
+  --evo-cream: #f3efe3;
+  --evo-shadow: 0 10px 0 #0a0d0b, 0 20px 45px rgba(0,0,0,.35);
+}
+
+html {
+  color-scheme: dark;
+  background: #0b0e0c;
+  scroll-padding-bottom: 112px;
+}
+
+body {
+  color: var(--evo-text);
+  background:
+    radial-gradient(circle at 50% -12%, rgba(239,56,55,.22), transparent 33rem),
+    linear-gradient(180deg, #0c100d 0%, #111512 40%, #090c0a 100%);
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+.background-grid {
+  opacity: .7;
+  background-image:
+    linear-gradient(rgba(84,130,93,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(84,130,93,.06) 1px, transparent 1px);
+  background-size: 20px 20px;
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.8) 60%, transparent 100%);
+}
+
+.app-shell {
+  width: min(100%, 780px);
+  padding: max(12px, env(safe-area-inset-top)) 12px 34px;
+}
+
+main {
+  position: relative;
+  z-index: 2;
+}
+
+main > div:not(.hidden) {
+  animation: evoModuleIn .28s ease both;
+}
+
+@keyframes evoModuleIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ----- Gemeinsame Geräteflächen ----- */
+.panel {
+  color: var(--evo-text);
+  border: 2px solid #343d37;
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.025), transparent 38%),
+    linear-gradient(180deg, #18201b 0%, #111712 100%);
+  box-shadow: 0 8px 0 #080b09, 0 18px 38px rgba(0,0,0,.26);
+}
+
+.panel::before {
+  border-color: rgba(95,111,100,.18);
+}
+
+.panel h2,
+.panel h3,
+.dashboard-section-heading h2,
+.section-heading h2 {
+  color: var(--evo-text);
+}
+
+.panel p,
+.panel small,
+.muted,
+.preview-help,
+.set-data-status,
+.insights-data-status,
+.history-card-subline,
+.collection-card-meta {
+  color: var(--evo-muted);
+}
+
+.panel-kicker,
+.eyebrow {
+  color: var(--evo-red-bright);
+}
+
+.step-badge {
+  color: #fff;
+  background: linear-gradient(180deg, var(--evo-red-bright), var(--evo-red));
+  border-color: #120d0e;
+  box-shadow: 0 5px 0 #080a09;
+}
+
+input,
+select,
+textarea {
+  color: var(--evo-text);
+  border-color: #586158;
+  background: #0b100d;
+}
+
+input::placeholder,
+textarea::placeholder { color: #778078; }
+
+.primary-button,
+.add-collection-button,
+.cardmarket-button {
+  color: #fff;
+  border-color: #160d0e;
+  background: linear-gradient(180deg, #ff4b48 0%, #e62f30 100%);
+  box-shadow: 0 7px 0 #090b09, inset 0 1px rgba(255,255,255,.25);
+}
+
+.secondary-button,
+.mini-system-button,
+label.secondary-button {
+  color: var(--evo-text);
+  border-color: #59625a;
+  background: linear-gradient(180deg, #2b332d 0%, #202720 100%);
+  box-shadow: 0 5px 0 #090b09;
+}
+
+.primary-button:active,
+.secondary-button:active,
+.mini-system-button:active,
+.evolution-action-button:active,
+.evolution-dock-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #090b09;
+}
+
+/* ----- Hochwertiger Systemkopf ----- */
+.app-header {
+  overflow: visible;
+  margin-bottom: 16px;
+  padding: 0 16px 16px;
+  border: 2px solid #160c0e;
+  border-radius: 28px;
+  background:
+    linear-gradient(150deg, rgba(255,255,255,.18), transparent 30%),
+    linear-gradient(180deg, #fa4743 0%, #df2a2d 58%, #b51e22 100%);
+  box-shadow: 0 9px 0 #080a09, 0 24px 45px rgba(0,0,0,.33);
+}
+
+.app-header::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(255,255,255,.17);
+  border-radius: 21px;
+  pointer-events: none;
+}
+
+.app-header::after {
+  right: 18px;
+  bottom: 14px;
+  width: 112px;
+  opacity: .32;
+}
+
+.evolution-header-rail {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 58px auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 70px;
+  padding-top: 6px;
+  border-bottom: 1px solid rgba(30,13,15,.55);
+}
+
+.evolution-header-lens,
+.evolution-boot-lens,
+.evolution-scanner-lens,
+.evolution-system-sheet-lens {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 5px solid #e8ebe6;
+  border-radius: 50%;
+  background: #154255;
+  box-shadow: 0 4px 0 #17191a, inset 0 0 0 3px #062735, 0 0 15px rgba(38,174,232,.32);
+}
+
+.evolution-header-lens i,
+.evolution-boot-lens i,
+.evolution-scanner-lens i,
+.evolution-system-sheet-lens i {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #d8fbff 0 8%, #45caff 10% 25%, #087da9 48%, #042c3c 75%);
+  box-shadow: inset -5px -7px 8px rgba(0,0,0,.35), 0 0 9px #2bc5ff;
+}
+
+.evolution-header-leds,
+.evolution-boot-leds {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.evolution-header-leds i,
+.evolution-boot-leds i,
+.evolution-control-leds i {
+  width: 11px;
+  height: 11px;
+  border: 2px solid #401012;
+  border-radius: 50%;
+  background: #8a1418;
+  box-shadow: inset 0 1px rgba(255,255,255,.4);
+}
+.evolution-header-leds i:nth-child(2), .evolution-boot-leds i:nth-child(2), .evolution-control-leds i:nth-child(2) { background: #ffd33c; }
+.evolution-header-leds i:nth-child(3), .evolution-boot-leds i:nth-child(3), .evolution-control-leds i:nth-child(3) { background: #49c85b; }
+
+.evolution-device-code {
+  justify-self: start;
+  color: #451012;
+  font-size: .63rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.evolution-header-rail .system-status {
+  justify-self: end;
+  padding: 7px 10px;
+  color: #f7eee6;
+  border: 1px solid rgba(34,12,14,.55);
+  border-radius: 10px;
+  background: rgba(70,13,16,.34);
+  font-size: .64rem;
+  letter-spacing: .07em;
+}
+
+.evolution-brand-deck {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+  gap: 15px;
+  padding: 18px 0 13px;
+}
+
+.evolution-brand-deck .brand-device {
+  width: 96px;
+  border: 2px solid rgba(22,10,12,.7);
+  border-radius: 22px;
+  object-fit: cover;
+  box-shadow: 0 7px 0 rgba(28,10,12,.75), 0 12px 24px rgba(0,0,0,.25);
+}
+
+.app-header h1 {
+  font-size: clamp(1.35rem, 5.5vw, 2.2rem);
+  text-shadow: 3px 3px 0 #5c1114;
+}
+
+.app-header h1 em { color: #1a1011; }
+
+.evolution-header-display {
+  min-width: 82px;
+  padding: 10px 9px;
+  color: #9edda8;
+  border: 2px solid #271416;
+  border-radius: 9px;
+  background: #0b1510;
+  box-shadow: inset 0 0 18px rgba(70,180,84,.12), 0 4px 0 rgba(74,12,15,.5);
+  text-align: center;
+}
+.evolution-header-display span { display: block; font-size: .48rem; letter-spacing: .1em; }
+.evolution-header-display strong { font-family: var(--pixel); font-size: .85rem; }
+
+.app-header .status-console {
+  color: #e9eee7;
+  border-color: #2d1517;
+  background: rgba(10,16,12,.88);
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.45);
+}
+
+/* ----- Dashboard ----- */
+.dashboard-hero-panel {
+  overflow: hidden;
+  padding-top: 22px;
+}
+
+.evolution-dashboard-heading {
+  align-items: start;
+}
+
+.dashboard-primary-stats > div,
+.dashboard-today-console,
+.insights-primary-stats article,
+.collection-stats > div,
+.history-stats > div {
+  color: var(--evo-text);
+  border-color: #39443c;
+  background: linear-gradient(180deg, #0d1510, #09100c);
+  box-shadow: inset 0 0 22px rgba(62,168,80,.035);
+}
+
+.dashboard-primary-stats strong,
+.dashboard-today-header strong,
+.dashboard-verification-row strong {
+  color: #ecf5e8;
+}
+
+.dashboard-verification-track,
+.progress-track,
+.set-detail-progress-track {
+  border-color: #4b5850;
+  background: #070b08;
+}
+
+.evolution-dashboard-command {
+  margin-top: 18px;
+}
+
+.evolution-scan-command {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  width: 100%;
+  padding: 15px 18px;
+  text-align: left;
+}
+.evolution-scan-command > span:nth-child(2) { display: grid; gap: 3px; font-weight: 800; }
+.evolution-scan-command small { font-size: .52rem; opacity: .7; letter-spacing: .12em; }
+.evolution-scan-command > i { font-size: 2rem; font-style: normal; }
+
+.dashboard-recent-row,
+.dashboard-collection-row,
+.history-card,
+.collection-card,
+.set-card,
+.set-detail-card {
+  color: var(--evo-text);
+  border-color: #39453c;
+  background: linear-gradient(180deg, #101813, #0b110d);
+}
+
+.dashboard-recent-row:hover,
+.dashboard-collection-row:hover { border-color: #657268; }
+
+/* ----- Persistente Pokédex-Steuerung ----- */
+.evolution-bottom-dock {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 1fr 1.08fr 1fr;
+  width: min(calc(100% - 18px), 610px);
+  height: 76px;
+  padding: 8px;
+  border: 2px solid #0a0d0b;
+  border-radius: 23px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), transparent 36%),
+    linear-gradient(180deg, #242c26, #151b17);
+  box-shadow: 0 7px 0 rgba(0,0,0,.8), 0 18px 45px rgba(0,0,0,.48), inset 0 0 0 1px #465148;
+}
+
+.evolution-bottom-dock::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
+  background: rgba(255,255,255,.05);
+}
+
+.evolution-dock-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: #9aa39a;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  font-size: .57rem;
+  letter-spacing: .08em;
+  transition: color .2s ease, background .2s ease, transform .12s ease;
+}
+
+.evolution-dock-button.active {
+  color: #fff;
+  background: rgba(239,56,55,.14);
+}
+
+.evolution-dock-scan {
+  margin: -19px 5px 0;
+  color: #fff;
+  border: 2px solid #180d0e;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ff4a48, #d9272b);
+  box-shadow: 0 6px 0 #080a09, 0 0 20px rgba(239,56,55,.24);
+}
+
+.evolution-dock-scan.active { background: linear-gradient(180deg, #ff5c58, #e83134); }
+
+.evolution-dock-icon {
+  position: relative;
+  display: block;
+  width: 25px;
+  height: 25px;
+}
+
+.evolution-dock-icon.home::before {
+  content: ""; position: absolute; left: 4px; top: 8px; width: 17px; height: 14px;
+  border: 2px solid currentColor; border-top: 0; border-radius: 3px;
+}
+.evolution-dock-icon.home::after {
+  content: ""; position: absolute; left: 5px; top: 3px; width: 14px; height: 14px;
+  border-left: 2px solid currentColor; border-top: 2px solid currentColor; transform: rotate(45deg); border-radius: 2px;
+}
+.evolution-dock-icon.scan::before {
+  content: ""; position: absolute; inset: 4px; border: 2px solid currentColor; border-radius: 5px;
+  box-shadow: inset 0 0 0 4px rgba(255,255,255,.08);
+}
+.evolution-dock-icon.scan::after {
+  content: ""; position: absolute; left: 10px; top: 10px; width: 5px; height: 5px; border: 2px solid currentColor; border-radius: 50%;
+}
+.evolution-dock-icon.system::before,
+.evolution-dock-icon.system::after {
+  content: ""; position: absolute; left: 2px; right: 2px; height: 5px; border: 2px solid currentColor; border-radius: 5px;
+}
+.evolution-dock-icon.system::before { top: 4px; }
+.evolution-dock-icon.system::after { bottom: 4px; }
+
+/* ----- Systemmenü ----- */
+.evolution-system-backdrop {
+  position: fixed;
+  z-index: 105;
+  inset: 0;
+  display: block !important;
+  opacity: 0;
+  pointer-events: none;
+  background: rgba(3,6,4,.68);
+  backdrop-filter: blur(7px);
+  transition: opacity .22s ease;
+}
+.evolution-system-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.evolution-system-sheet {
+  position: fixed;
+  z-index: 110;
+  left: 50%;
+  bottom: 0;
+  display: block !important;
+  width: min(100%, 680px);
+  max-height: min(82dvh, 760px);
+  padding: 12px 14px calc(24px + env(safe-area-inset-bottom));
+  color: var(--evo-text);
+  border: 2px solid #0a0d0b;
+  border-bottom: 0;
+  border-radius: 30px 30px 0 0;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.04), transparent 30%),
+    linear-gradient(180deg, #202821, #101611);
+  box-shadow: 0 -18px 50px rgba(0,0,0,.45), inset 0 0 0 1px #465147;
+  transform: translate(-50%, 110%);
+  visibility: hidden;
+  transition: transform .28s cubic-bezier(.2,.8,.2,1), visibility 0s linear .28s;
+}
+.evolution-system-sheet.open { transform: translate(-50%, 0); visibility: visible; transition-delay: 0s; }
+
+.evolution-system-sheet-rail {
+  display: grid;
+  grid-template-columns: 54px 1fr 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px 15px;
+  border-bottom: 1px solid #465047;
+}
+.evolution-system-sheet-rail span { display: block; color: var(--evo-red-bright); font-size: .56rem; letter-spacing: .12em; }
+.evolution-system-sheet-rail strong { display: block; margin-top: 3px; font-family: var(--pixel); font-size: 1rem; }
+.evolution-system-sheet-lens { width: 46px; height: 46px; }
+.evolution-system-sheet-lens i { width: 29px; height: 29px; }
+.evolution-system-sheet-rail > button {
+  width: 42px; height: 42px; color: #fff; border: 1px solid #596259; border-radius: 12px; background: #101612; font-size: 1.5rem;
+}
+
+.evolution-system-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+  padding: 16px 0;
+}
+.evolution-system-grid > button {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 11px;
+  min-height: 82px;
+  padding: 13px;
+  color: var(--evo-text);
+  border: 1px solid #455148;
+  border-radius: 16px;
+  background: linear-gradient(180deg,#131b15,#0b110d);
+  text-align: left;
+  box-shadow: 0 4px 0 #080a09;
+}
+.evolution-system-grid > button:active { transform: translateY(2px); box-shadow: 0 2px 0 #080a09; }
+.evolution-system-grid strong { align-self: end; font-size: .78rem; }
+.evolution-system-grid small { align-self: start; color: #8d988f; font-size: .58rem; }
+.evolution-menu-icon { grid-row: 1 / 3; position: relative; width: 38px; height: 38px; color: var(--evo-red-bright); border: 1px solid #5a655c; border-radius: 11px; background: #07100b; }
+.evolution-menu-icon::before,
+.evolution-menu-icon::after { content:""; position:absolute; }
+.evolution-menu-icon.collection::before { inset: 9px 7px; border: 2px solid currentColor; border-radius: 2px; box-shadow: 4px -4px 0 -2px #07100b, 4px -4px 0 0 currentColor; }
+.evolution-menu-icon.wishlist::before { content:"★"; inset: 5px; font-size: 1.3rem; text-align:center; }
+.evolution-menu-icon.sets::before { left:8px; top:8px; width:20px; height:20px; border:2px solid currentColor; border-radius:50%; }
+.evolution-menu-icon.sets::after { left:17px; top:5px; width:2px; height:26px; background:currentColor; box-shadow:-9px 9px 0 -0.5px currentColor, 9px 9px 0 -0.5px currentColor; }
+.evolution-menu-icon.history::before { inset:7px; border:2px solid currentColor; border-radius:50%; }
+.evolution-menu-icon.history::after { left:18px; top:10px; width:2px; height:10px; background:currentColor; transform-origin:bottom; transform:rotate(-45deg); }
+.evolution-menu-icon.insights::before { left:7px; bottom:7px; width:5px; height:11px; background:currentColor; box-shadow:8px -6px 0 currentColor,16px -13px 0 currentColor; }
+.evolution-menu-icon.settings::before { content:"⚙"; inset:3px; font-size:1.45rem; text-align:center; line-height:31px; }
+
+.evolution-system-sheet-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid #445047;
+  border-radius: 12px;
+  background: #080e0a;
+  color: #a9b3aa;
+  font-size: .52rem;
+  letter-spacing: .07em;
+}
+.evolution-system-sheet-status span { display:flex; align-items:center; gap:5px; }
+
+body.system-menu-open { overflow: hidden; }
+
+/* ----- Scanner-Modul ----- */
+#scanner-panel {
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.03), transparent 36%),
+    linear-gradient(180deg, #151d17, #0e140f);
+}
+
+.evolution-module-heading {
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+.evolution-module-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #b8c1b9;
+  font-size: .55rem;
+  letter-spacing: .08em;
+}
+
+.evolution-tip-box {
+  color: var(--evo-text);
+  border-color: #465249;
+  background: linear-gradient(180deg,#111813,#0b110d);
+}
+.evolution-info-button {
+  width: 34px; height: 34px; color: #b3beb5; border: 1px solid #536057; border-radius: 50%; background: #090f0b;
+}
+.evolution-tip-target { position:relative; width:40px; height:40px; border:2px solid #88928a; border-radius:10px; background:#0a100c; }
+.evolution-tip-target::before { content:""; position:absolute; inset:9px; border:2px dashed var(--evo-red-bright); border-radius:3px; }
+
+.evolution-language-row {
+  border-color: #465249;
+  background: #0c130e;
+}
+
+.evolution-scan-console {
+  padding: 10px;
+  border: 2px solid #050806;
+  border-radius: 25px;
+  background: linear-gradient(180deg,#252c27,#151a16);
+  box-shadow: 0 7px 0 #050705, inset 0 0 0 1px #536057;
+}
+
+.evolution-scan-display {
+  position: relative;
+  min-height: 390px;
+  overflow: hidden;
+  border: 2px solid #536057;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at center, rgba(73,171,89,.12), transparent 42%),
+    linear-gradient(rgba(71,115,79,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71,115,79,.08) 1px, transparent 1px),
+    #060d08;
+  background-size: auto, 18px 18px, 18px 18px, auto;
+  box-shadow: inset 0 0 35px rgba(0,0,0,.8), inset 0 0 0 8px rgba(0,0,0,.16);
+}
+.evolution-scan-screen-grid { position:absolute; inset:0; background:linear-gradient(180deg, transparent 0 49%, rgba(98,214,108,.05) 50%, transparent 51%); background-size:100% 6px; opacity:.55; }
+.evolution-card-target {
+  position:absolute; left:50%; top:47%; width:42%; aspect-ratio: 5/7; transform:translate(-50%,-50%) rotate(-2deg);
+  border:2px solid #89928b; border-radius:10px;
+  background:linear-gradient(160deg,#48504a,#252c27);
+  box-shadow:0 15px 28px rgba(0,0,0,.42), inset 0 0 0 8px rgba(255,255,255,.035);
+}
+.evolution-card-target i { position:absolute; left:20%; right:20%; top:17%; height:36%; border-radius:8px; background:linear-gradient(135deg,#c3bda9,#78796f); }
+.evolution-card-target i::after { content:""; position:absolute; left:50%; top:50%; width:34px; height:34px; transform:translate(-50%,-50%); border:6px solid #333936; border-radius:50%; }
+.evolution-card-target b { position:absolute; left:20%; right:20%; bottom:23%; height:8px; border-radius:8px; background:#d9d2c2; box-shadow:0 24px 0 #d9d2c2; }
+.evolution-card-target span { position:absolute; left:15%; right:15%; bottom:7%; height:3px; background:#777f79; }
+.evolution-card-target span:last-child { bottom:4%; right:36%; }
+.evolution-scan-readout { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); display:grid; justify-items:center; gap:4px; }
+.evolution-scan-readout p { display:flex; align-items:center; gap:7px; margin:0; padding:7px 11px; border:1px solid #526157; border-radius:9px; background:rgba(5,10,7,.86); color:#dfe8dd; font-size:.66rem; font-weight:700; }
+.evolution-scan-readout small { color:#73927b; font-size:.46rem; letter-spacing:.13em; }
+
+.evolution-upload-actions { display:grid; gap:11px; padding-top:12px; }
+.evolution-action-button {
+  display:grid !important;
+  grid-template-columns:48px 1fr auto;
+  align-items:center;
+  gap:12px;
+  min-height:72px;
+  padding:11px 15px !important;
+  text-align:left;
+}
+.evolution-action-button > span:nth-child(2) { display:grid; gap:3px; font-weight:800; }
+.evolution-action-button small { font-size:.5rem; letter-spacing:.12em; opacity:.65; }
+.evolution-action-button > i { font-size:1.6rem; font-style:normal; }
+
+.evolution-action-icon {
+  position:relative;
+  display:block;
+  width:42px;
+  height:42px;
+  border:1px solid rgba(255,255,255,.42);
+  border-radius:12px;
+  background:rgba(0,0,0,.14);
+}
+.evolution-camera-icon::before { content:""; position:absolute; left:8px; right:8px; top:12px; bottom:8px; border:3px solid currentColor; border-radius:7px; }
+.evolution-camera-icon::after { content:""; position:absolute; left:16px; top:18px; width:8px; height:8px; border:3px solid currentColor; border-radius:50%; box-shadow:-5px -12px 0 -2px currentColor; }
+.evolution-gallery-icon::before { content:""; position:absolute; inset:8px; border:3px solid currentColor; border-radius:5px; }
+.evolution-gallery-icon::after { content:""; position:absolute; left:12px; bottom:12px; width:19px; height:14px; background:linear-gradient(135deg,transparent 43%,currentColor 45% 55%,transparent 57%), linear-gradient(45deg,transparent 43%,currentColor 45% 55%,transparent 57%); }
+.evolution-gallery-action { color:var(--evo-text)!important; }
+.evolution-fallback-link { color:#d76d6d; }
+
+/* ----- Live-Scanner als Pokédex-Hardware ----- */
+.scanner-modal {
+  z-index: 200;
+  display: grid;
+  grid-template-rows: auto minmax(0,1fr) auto;
+  color: #fff;
+  background: #080b09;
+}
+
+.evolution-scanner-header {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 11px;
+  min-height: calc(94px + env(safe-area-inset-top));
+  padding: calc(10px + env(safe-area-inset-top)) 15px 12px;
+  border-bottom: 3px solid #230d0f;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.14),transparent 35%),
+    linear-gradient(180deg,#f2413f,#c82025);
+  box-shadow: 0 7px 0 rgba(0,0,0,.45);
+}
+.evolution-scanner-lens { width:43px; height:43px; border-width:4px; }
+.evolution-scanner-lens i { width:28px; height:28px; }
+.evolution-scanner-header-copy { min-width:0; }
+.evolution-scanner-header-copy span { display:block; color:#521316; font-size:.49rem; font-weight:800; letter-spacing:.12em; }
+.evolution-scanner-header-copy strong { display:block; margin:4px 0 3px; font-family:var(--pixel); font-size:clamp(.8rem,3.7vw,1rem); }
+.evolution-scanner-header-copy small { display:block; color:#f6c6c5; font-size:.58rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evolution-focus-status { display:grid; justify-items:end; gap:4px; color:#fff; font-size:.48rem; letter-spacing:.07em; }
+.evolution-focus-status i { width:14px; height:14px; }
+
+.camera-viewport { min-height:0; }
+.scanner-guide { border-radius:14px; box-shadow:0 0 0 1px rgba(255,255,255,.09),0 0 24px rgba(239,56,55,.16); }
+.scanner-guide .corner { width:55px; height:55px; border-width:7px; filter:drop-shadow(0 0 5px rgba(239,56,55,.55)); }
+.guide-scan-line { background:linear-gradient(90deg,transparent,#ff4545 12% 88%,transparent); box-shadow:0 0 13px #ef3837; }
+
+.evolution-scanner-control-deck {
+  position:relative;
+  z-index:3;
+  padding: 10px 13px calc(13px + env(safe-area-inset-bottom));
+  border-top: 3px solid #050705;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.04),transparent 25%),
+    linear-gradient(180deg,#232a25,#101511);
+  box-shadow:0 -8px 25px rgba(0,0,0,.38), inset 0 0 0 1px #485249;
+}
+.evolution-scanner-control-deck > p { margin:0 0 9px; color:#b9c4bb; font-size:.62rem; text-align:center; }
+.evolution-scanner-controls { display:grid; grid-template-columns:1fr 1.2fr 1.3fr; align-items:end; gap:10px; }
+.evolution-hardware-button,
+.evolution-capture-button {
+  min-height:66px;
+  color:#fff;
+  border:2px solid #050705;
+  border-radius:16px;
+  background:linear-gradient(180deg,#363e38,#202620);
+  box-shadow:0 5px 0 #050705, inset 0 1px rgba(255,255,255,.12);
+}
+.evolution-hardware-button { display:grid; place-items:center; gap:4px; padding:7px; }
+.evolution-hardware-button small,.evolution-capture-button small { color:#bdc6be; font-size:.45rem; letter-spacing:.08em; }
+.evolution-hardware-button.back span { width:18px; height:18px; border-left:4px solid #fff; border-bottom:4px solid #fff; transform:rotate(45deg); }
+.evolution-hardware-button.camera span { position:relative; width:28px; height:20px; border:3px solid #fff; border-radius:5px; }
+.evolution-hardware-button.camera span::before { content:""; position:absolute; left:8px; top:4px; width:6px; height:6px; border:2px solid #fff; border-radius:50%; }
+.evolution-hardware-button.camera span::after { content:"↻"; position:absolute; right:-13px; top:-16px; font-size:.85rem; }
+.evolution-capture-button { position:relative; display:grid; place-items:center; gap:3px; height:auto; padding:5px; background:linear-gradient(180deg,#ef4441,#c51f25); }
+.evolution-capture-button > span { width:45px; height:45px; border:5px solid #fff; border-radius:50%; background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 3px rgba(0,0,0,.2),0 0 16px rgba(239,56,55,.35); }
+.evolution-control-leds { position:absolute; left:18px; top:15px; display:flex; gap:5px; transform:scale(.65); transform-origin:left top; opacity:.45; }
+
+/* ----- Bootscreen: linke Innenseite statt lose Dekoration ----- */
+.boot-screen {
+  padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  background:
+    linear-gradient(rgba(68,119,76,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(68,119,76,.045) 1px, transparent 1px),
+    radial-gradient(circle at 50% 40%, #142017, #050806 72%);
+  background-size:16px 16px,16px 16px,auto;
+}
+.boot-skip { top:max(18px,env(safe-area-inset-top)); right:18px; color:#c5cec6; border-color:#4c584f; background:#0c120e; }
+
+.evolution-boot-device {
+  position:relative;
+  width:min(92vw,540px);
+  margin:auto;
+  padding:0 17px 18px;
+  border:3px solid #1a0b0d;
+  border-radius:36px 36px 42px 42px;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.14),transparent 32%),
+    linear-gradient(180deg,#f23f3d,#cf2428 68%,#9f171d);
+  box-shadow:0 13px 0 #060806,0 30px 60px rgba(0,0,0,.52),inset 0 0 0 2px rgba(255,255,255,.08);
+}
+.evolution-boot-toprail { display:grid; grid-template-columns:62px auto 1fr; align-items:center; gap:11px; min-height:88px; border-bottom:2px solid rgba(65,12,15,.65); }
+.evolution-boot-toprail > span { justify-self:end; color:#5e1115; font-size:.55rem; font-weight:800; letter-spacing:.11em; }
+.evolution-boot-lens { width:57px; height:57px; }
+.evolution-boot-lens i { width:38px; height:38px; }
+.evolution-boot-screen-shell { padding:13px 0; }
+.evolution-boot-device .boot-display {
+  position:relative;
+  min-height:440px;
+  padding:36px 27px 30px;
+  border:9px solid #161a17;
+  border-radius:28px;
+  background:
+    linear-gradient(rgba(91,151,100,.07) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(91,151,100,.07) 1px,transparent 1px),
+    radial-gradient(circle at center,rgba(61,150,78,.1),transparent 55%),#071009;
+  background-size:15px 15px,15px 15px,auto,auto;
+  box-shadow:inset 0 0 48px rgba(0,0,0,.85),0 6px 0 rgba(80,13,16,.45);
+}
+.evolution-boot-device .boot-display > img { width:88px; height:88px; margin:5px auto 15px; border:1px solid #4b5a4e; border-radius:20px; object-fit:cover; box-shadow:0 0 24px rgba(93,214,110,.12); }
+.boot-title { color:#ecf7e8; font-size:clamp(1.18rem,5vw,1.75rem); text-shadow:0 0 12px rgba(98,214,108,.25); }
+.boot-subtitle { margin:8px 0 24px; color:#72a87c; font-size:.55rem; letter-spacing:.13em; text-align:center; }
+.boot-log { gap:12px; color:#b9d7bb; }
+.boot-progress { border-color:#506458; background:#020503; }
+.boot-progress i { background:repeating-linear-gradient(90deg,#70da78 0 14px,#3ea84b 14px 19px); box-shadow:0 0 12px rgba(98,214,108,.45); }
+#bootReadyText { color:#dff4df; }
+.boot-corner { position:absolute; width:42px; height:42px; border-color:#6cd678; border-style:solid; opacity:.75; }
+.boot-corner-tl { left:18px; top:18px; border-width:3px 0 0 3px; }
+.boot-corner-tr { right:18px; top:18px; border-width:3px 3px 0 0; }
+.boot-corner-bl { left:18px; bottom:18px; border-width:0 0 3px 3px; }
+.boot-corner-br { right:18px; bottom:18px; border-width:0 3px 3px 0; }
+.evolution-boot-controls { display:flex; justify-content:flex-end; align-items:center; gap:13px; min-height:56px; padding:5px 8px 0; }
+.evolution-control-round { width:34px; height:34px; border:3px solid #2c0c0e; border-radius:50%; background:#222824; box-shadow:0 4px 0 rgba(60,10,13,.65); }
+.evolution-control-bar { width:48px; height:18px; border:2px solid #2c0c0e; border-radius:10px; background:#252b27; box-shadow:0 3px 0 rgba(60,10,13,.65); }
+.evolution-control-dpad { position:relative; width:48px; height:48px; margin-left:6px; }
+.evolution-control-dpad::before,.evolution-control-dpad::after { content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border:2px solid #2b0b0e; border-radius:6px; background:#171c18; box-shadow:0 3px 0 rgba(60,10,13,.55); }
+.evolution-control-dpad::before { width:46px; height:17px; }
+.evolution-control-dpad::after { width:17px; height:46px; }
+.boot-screen.boot-hidden .evolution-boot-device { animation:evoBootOut .42s ease both; }
+@keyframes evoBootOut { to { transform:scale(.96) translateY(-8px); opacity:0; filter:brightness(1.25); } }
+
+/* ----- Bestehende Module in dieselbe Gerätehülle einbinden ----- */
+.collection-toolbar,
+.collection-browser,
+.set-browser,
+.set-detail-browser,
+.history-toolbar,
+.settings-section,
+.manual-content,
+.ai-content {
+  color:var(--evo-text);
+  border-color:#414c43;
+  background:#0d140f;
+}
+
+.collection-filter-chip,
+.set-filter-chip,
+.set-browser-chip {
+  color:#b0b9b1;
+  border-color:#48534a;
+  background:#111813;
+}
+.collection-filter-chip.active,
+.set-filter-chip.active,
+.set-browser-chip.active { color:#fff; border-color:#d73a39; background:#8e2224; }
+
+.collection-detail-sheet,
+.settings-drawer,
+.set-jump-sheet {
+  color:var(--evo-text);
+  border-color:#111512;
+  background:linear-gradient(180deg,#1b231d,#0e140f);
+}
+
+.collection-detail-header,
+.settings-topbar,
+.set-jump-sheet-header {
+  color:#fff;
+  background:linear-gradient(180deg,#e93636,#b82126);
+}
+
+footer { display:none; }
+
+/* ----- Kleine Displays ----- */
+@media (max-width: 620px) {
+  .app-shell { padding-left:8px; padding-right:8px; }
+  .app-header { padding-left:12px; padding-right:12px; border-radius:24px; }
+  .evolution-header-rail { grid-template-columns:51px auto 1fr auto; gap:7px; }
+  .evolution-header-lens { width:44px; height:44px; }
+  .evolution-header-lens i { width:28px; height:28px; }
+  .evolution-device-code { display:none; }
+  .evolution-brand-deck { grid-template-columns:76px 1fr; gap:12px; }
+  .evolution-brand-deck .brand-device { width:76px; border-radius:17px; }
+  .evolution-header-display { display:none; }
+  .app-header .status-console { font-size:.56rem; }
+  .dashboard-primary-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dashboard-today-header { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .evolution-system-grid { grid-template-columns:1fr 1fr; }
+  .evolution-system-grid > button { min-height:77px; padding:11px; }
+  .evolution-scan-display { min-height:340px; }
+  .evolution-scanner-header { grid-template-columns:43px minmax(0,1fr) auto; }
+  .evolution-focus-status span { display:none; }
+  .evolution-scanner-controls { grid-template-columns:.9fr 1fr 1.2fr; gap:8px; }
+  .evolution-hardware-button,.evolution-capture-button { min-height:61px; }
+  .evolution-boot-device { width:min(94vw,500px); padding-left:11px; padding-right:11px; }
+  .evolution-boot-device .boot-display { min-height:420px; padding-left:20px; padding-right:20px; }
+}
+
+@media (max-width: 390px) {
+  .evolution-header-leds { gap:5px; }
+  .evolution-header-rail .system-status { padding:6px 7px; font-size:.54rem; }
+  .evolution-brand-deck { grid-template-columns:68px 1fr; }
+  .evolution-brand-deck .brand-device { width:68px; }
+  .app-header h1 { font-size:1.2rem; }
+  .app-header .brand-copy > p:last-child { font-size:.67rem; }
+  .evolution-system-grid > button { grid-template-columns:34px 1fr; column-gap:8px; }
+  .evolution-menu-icon { width:33px; height:33px; }
+  .evolution-system-grid strong { font-size:.68rem; }
+  .evolution-system-grid small { font-size:.5rem; }
+  .evolution-scan-display { min-height:315px; }
+  .evolution-card-target { width:45%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main > div:not(.hidden),
+  .evolution-system-sheet,
+  .evolution-system-backdrop,
+  .boot-screen.boot-hidden .evolution-boot-device { animation:none!important; transition:none!important; }
+}
+
+/* Konfliktfreie Detailkorrekturen gegenüber dem bisherigen Stylesheet */
+.evolution-boot-device .boot-display::before,
+.evolution-boot-device .boot-display::after { display: none; }
+.evolution-boot-device .boot-display > img { filter: none; }
+.evolution-capture-button { width: 100%; height: auto; }
+.evolution-capture-button > span { position: static; inset: auto; }
+.evolution-scanner-controls #closeScannerButton { grid-column: 1; }
+.evolution-scanner-controls #switchCameraButton { grid-column: 2; }
+.evolution-scanner-controls #captureButton { grid-column: 3; }

@@ -1,968 +1,880 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1f1f1f" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="CardDex AI" />
-  <meta name="description" content="CardDex AI erkennt Pokémon-Karten und öffnet die passende Karte auf Cardmarket." />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="icons/icon-180.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=6151" />
-  <script>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
+<meta content="#120d0e" name="theme-color"/>
+<meta content="yes" name="apple-mobile-web-app-capable"/>
+<meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
+<meta content="CardDex AI" name="apple-mobile-web-app-title"/>
+<meta content="CardDex AI erkennt Pokémon-Karten und öffnet die passende Karte auf Cardmarket." name="description"/>
+<link href="manifest.webmanifest" rel="manifest"/>
+<link href="icons/icon-180.png" rel="apple-touch-icon"/>
+<link href="icons/icon-192.png" rel="icon" sizes="192x192" type="image/png"/>
+<link href="styles.css?v=7000" rel="stylesheet"/><link href="evolution.css?v=7000" rel="stylesheet"/>
+<script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
         document.documentElement.classList.add("boot-disabled");
       }
     } catch {}
   </script>
-  <title>CardDex AI</title>
+<title>CardDex AI · Evolution</title>
 </head>
 <body>
-  <div id="bootScreen" class="boot-screen" aria-label="CardDex AI wird gestartet">
-    <button id="skipBootButton" class="boot-skip" type="button">Überspringen</button>
-    <div class="boot-device" aria-hidden="true">
-      <div class="boot-lens"><i></i></div>
-      <div class="boot-led-row"><i></i><i></i><i></i></div>
-      <div class="boot-display">
-        <div class="boot-scanline"></div>
-        <img src="icons/icon-192.png" alt="" />
-        <p class="boot-title">CARDEX AI</p>
-        <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.15.1</span>
-          <span id="bootLine2">INITIALIZING MODULES…</span>
-          <span id="bootLine3">CAMERA: CHECKING</span>
-          <span id="bootLine4">AI LINK: CHECKING</span>
-        </div>
-        <div class="boot-progress"><i id="bootProgressBar"></i></div>
-        <strong id="bootReadyText">SYSTEM START</strong>
-      </div>
-      <div class="boot-controls"><span></span><span></span><span></span></div>
-    </div>
-  </div>
+<div aria-label="CardDex AI wird gestartet" class="boot-screen" id="bootScreen">
+<button class="boot-skip" id="skipBootButton" type="button">Überspringen</button>
+<div aria-hidden="true" class="evolution-boot-device">
+<div class="evolution-boot-toprail">
+<div class="evolution-boot-lens"><i></i></div>
+<div class="evolution-boot-leds"><i></i><i></i><i></i></div>
+<span>CARDEX // EVOLUTION</span>
+</div>
+<div class="evolution-boot-screen-shell">
+<div class="boot-display">
+<div class="boot-scanline"></div>
+<div class="boot-corner boot-corner-tl"></div><div class="boot-corner boot-corner-tr"></div>
+<div class="boot-corner boot-corner-bl"></div><div class="boot-corner boot-corner-br"></div>
+<img alt="" src="icons/carddex-open-pokedex.png"/>
+<p class="boot-title">CARDEX AI</p>
+<p class="boot-subtitle">PERSONAL CARD SYSTEM</p>
+<div aria-hidden="true" class="boot-log">
+<span id="bootLine1">CARDEX SYSTEM v7.0</span>
+<span id="bootLine2">INITIALIZING MODULES…</span>
+<span id="bootLine3">CAMERA: CHECKING</span>
+<span id="bootLine4">AI LINK: CHECKING</span>
+</div>
+<div class="boot-progress"><i id="bootProgressBar"></i></div>
+<strong id="bootReadyText">SYSTEM START</strong>
+</div>
+</div>
+<div class="evolution-boot-controls">
+<span class="evolution-control-round"></span>
+<span class="evolution-control-bar"></span>
+<span class="evolution-control-bar"></span>
+<span class="evolution-control-dpad"></span>
+</div>
+</div>
+</div>
+<div aria-hidden="true" class="background-grid"></div>
+<div class="app-shell" id="appShell">
+<header class="app-header">
+<div class="evolution-header-rail">
+<div class="evolution-header-lens"><i></i></div>
+<div aria-hidden="true" class="evolution-header-leds"><i></i><i></i><i></i></div>
+<span class="evolution-device-code">CDX-7000</span>
+<span aria-live="polite" class="system-status"><i class="status-light state-off" id="systemStatusLed"></i><strong id="systemStatusText">KI AUS</strong></span>
+</div>
+<div class="evolution-brand-deck">
+<img alt="" class="brand-device" src="icons/carddex-open-pokedex.png"/>
+<div class="brand-copy">
+<p class="eyebrow">PERSONAL CARD ASSISTANT</p>
+<h1>CardDex <em>AI</em></h1>
+<p>Scannen. Erkennen. Sammeln.</p>
+</div>
+<div aria-hidden="true" class="evolution-header-display">
+<span>EVOLUTION</span><strong>7.0</strong>
+</div>
+</div>
+<div aria-label="Systemstatus" class="status-console">
+<span><i class="status-light state-amber pulse" id="powerLed"></i> POWER</span>
+<span><i class="status-light state-off" id="aiLed"></i> AI</span>
+<span><i class="status-light state-off" id="syncLed"></i> SYNC</span>
+</div>
+</header>
 
-  <div class="background-grid" aria-hidden="true"></div>
-
-  <div id="appShell" class="app-shell">
-    <header class="app-header">
-      <div class="system-line">
-        <span>CARDEX SYSTEM</span>
-        <div class="header-tools">
-          <span class="system-status" aria-live="polite"><i id="systemStatusLed" class="status-light state-off"></i><strong id="systemStatusText">KI AUS</strong></span>
-          <button id="openSettingsButton" class="settings-button" type="button" aria-label="Einstellungen öffnen" aria-controls="settingsDrawer" aria-expanded="false">
-            <span class="gear-symbol" aria-hidden="true"></span>
-          </button>
-        </div>
-      </div>
-
-      <div class="brand-row">
-        <img class="brand-device" src="icons/icon-192.png" alt="" />
-        <div class="brand-copy">
-          <p class="eyebrow">PERSONAL CARD ASSISTANT</p>
-          <h1>CardDex <em>AI</em></h1>
-          <p>Scannen. Erkennen. Sammeln.</p>
-        </div>
-      </div>
-
-      <div class="status-console" aria-label="Systemstatus">
-        <span><i id="powerLed" class="status-light state-amber pulse"></i> POWER</span>
-        <span><i id="aiLed" class="status-light state-off"></i> AI</span>
-        <span><i id="syncLed" class="status-light state-off"></i> SYNC</span>
-      </div>
-    </header>
-
-    <nav class="app-navigation" role="tablist" aria-label="Hauptnavigation">
-      <button id="showDashboardView" class="app-nav-button active" type="button" role="tab" aria-selected="true">START</button>
-      <button id="showScannerView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SCAN</button>
-      <button id="showCollectionView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SAMMLUNG</button>
-      <button id="showSetsView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SETS</button>
-      <button id="showInsightsView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">INSIGHTS</button>
-      <button id="showHistoryView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">VERLAUF</button>
-    </nav>
-
-    <main>
-      <div id="dashboardView">
-        <section class="panel dashboard-hero-panel">
-          <div class="section-heading">
-            <div class="step-badge">6151</div>
-            <div>
-              <p class="panel-kicker">LIBRARY-MODUS</p>
-              <h2>Dein CardDex auf einen Blick</h2>
-              <p>Sammlung, Sets, Scannerhistorie und Verifizierungsstatus werden lokal auf diesem Gerät zusammengeführt.</p>
-            </div>
-          </div>
-
-          <div class="dashboard-primary-stats" aria-label="Sammlungsübersicht">
-            <div><span>KARTEN GESAMT</span><strong id="dashboardTotalCards">0</strong><small>inklusive Mehrfachkarten</small></div>
-            <div><span>VERSCHIEDENE</span><strong id="dashboardUniqueCards">0</strong><small>eindeutige Karten</small></div>
-            <div><span>SAMMLUNGEN</span><strong id="dashboardCollectionCount">0</strong><small>lokale Bereiche</small></div>
-            <div><span>WUNSCHLISTE</span><strong id="dashboardWishlistCount">0</strong><small>gesuchte Karten</small></div>
-          </div>
-
-          <div class="dashboard-today-console">
-            <div class="dashboard-today-header">
-              <div><span>HEUTE GESCANNT</span><strong id="dashboardTodayScans">0</strong></div>
-              <div><span>VERIFIZIERT</span><strong id="dashboardVerifiedToday">0</strong></div>
-              <div><span>PRÜFEN</span><strong id="dashboardReviewToday">0</strong></div>
-            </div>
-            <div class="dashboard-verification-row">
-              <span>ERFOLGSQUOTE HEUTE</span>
-              <div class="dashboard-verification-track"><i id="dashboardVerificationBar"></i></div>
-              <strong id="dashboardVerificationRate">0 %</strong>
-            </div>
-          </div>
-
-          <div class="dashboard-quick-actions">
-            <button id="dashboardStartScanner" class="primary-button" type="button"><span class="button-icon camera-symbol" aria-hidden="true"></span>Live-Scanner starten</button>
-            <button class="secondary-button" type="button" data-carddex-view="collection">Sammlung öffnen</button>
-            <button id="dashboardOpenWishlist" class="secondary-button wishlist-quick-button" type="button">Wunschliste öffnen</button>
-            <button class="secondary-button set-quick-button" type="button" data-carddex-view="sets">Set-Fortschritt</button>
-            <button class="secondary-button insights-quick-button" type="button" data-carddex-view="insights">Insights öffnen</button>
-            <button class="secondary-button" type="button" data-carddex-view="history">Scannerhistorie</button>
-          </div>
-        </section>
-
-        <section class="panel dashboard-panel">
-          <div class="dashboard-section-heading">
-            <div><p class="panel-kicker">LETZTE AKTIVITÄT</p><h2>Letzte Scans</h2></div>
-            <button class="mini-system-button" type="button" data-carddex-view="history">Alle anzeigen</button>
-          </div>
-          <div id="dashboardRecentScans" class="dashboard-recent-list"></div>
-        </section>
-
-        <section class="panel dashboard-panel">
-          <div class="dashboard-section-heading">
-            <div><p class="panel-kicker">LOKALE DATENBANK</p><h2>Sammlungen</h2></div>
-            <button class="mini-system-button" type="button" data-carddex-view="collection">Verwalten</button>
-          </div>
-          <div id="dashboardCollections" class="dashboard-collection-list"></div>
-        </section>
-      </div>
-
-
-      <div id="insightsView" class="hidden">
-        <section class="panel insights-hero-panel">
-          <div class="section-heading insights-heading">
-            <div class="step-badge">6151</div>
-            <div>
-              <p class="panel-kicker">INSIGHTS-MODUS</p>
-              <h2>Deine Sammlung in Zahlen</h2>
-              <p>Bestand, Dubletten, Set-Projekte und Scanneraktivität werden aus deiner lokalen CardDex-Datenbank ausgewertet.</p>
-            </div>
-            <button id="refreshInsightsButton" class="mini-system-button" type="button">Aktualisieren</button>
-          </div>
-          <p id="insightsDataStatus" class="insights-data-status" aria-live="polite">Lokale Daten werden ausgewertet …</p>
-
-          <div class="insights-primary-stats" aria-label="Zentrale Sammlungsstatistik">
-            <article><span>EXEMPLARE</span><strong id="insightsTotalCopies">0</strong><small>gesamter Bestand</small></article>
-            <article><span>VERSCHIEDENE</span><strong id="insightsUniqueCards">0</strong><small>eindeutige Karten</small></article>
-            <article class="action-card"><span>DUBLETTEN</span><strong id="insightsDuplicateCopies">0</strong><small>zusätzliche Exemplare</small><button id="insightsOpenDuplicates" type="button">Anzeigen</button></article>
-            <article class="action-card"><span>TAUSCH</span><strong id="insightsTradeCopies">0</strong><small>markierte Exemplare</small><button id="insightsOpenTrade" type="button">Anzeigen</button></article>
-            <article><span>WUNSCHLISTE</span><strong id="insightsWishlistCards">0</strong><small>verschiedene Karten</small></article>
-            <article><span>ERFASSTER EINKAUF</span><strong id="insightsPurchaseInvestment">0,00 €</strong><small>aktueller Bestand</small></article>
-          </div>
-        </section>
-
-        <section class="panel insights-panel">
-          <div class="dashboard-section-heading">
-            <div><p class="panel-kicker">BESTAND</p><h2>Sammlungsstruktur</h2></div>
-            <button class="mini-system-button" type="button" data-carddex-view="collection">Sammlungen öffnen</button>
-          </div>
-          <div class="insights-secondary-stats">
-            <div><span>VARIANTEN</span><strong id="insightsUniqueVariants">0</strong></div>
-            <div><span>VERKAUFT</span><strong id="insightsSoldCopies">0</strong></div>
-            <div><span>GETAUSCHT</span><strong id="insightsTradedCopies">0</strong></div>
-            <div><span>WUNSCH-ZIELBUDGET</span><strong id="insightsWishlistBudget">0,00 €</strong></div>
-          </div>
-          <div id="insightsCollectionBreakdown" class="insights-progress-list"></div>
-        </section>
-
-        <section class="insights-two-column">
-          <div class="panel insights-panel">
-            <div class="dashboard-section-heading"><div><p class="panel-kicker">KARTENSPRACHEN</p><h2>Sprachen</h2></div></div>
-            <div id="insightsLanguageBreakdown" class="insights-progress-list compact"></div>
-          </div>
-          <div class="panel insights-panel">
-            <div class="dashboard-section-heading"><div><p class="panel-kicker">AUSFÜHRUNGEN</p><h2>Varianten</h2></div></div>
-            <div id="insightsVariantBreakdown" class="insights-progress-list compact"></div>
-          </div>
-        </section>
-
-        <section class="panel insights-panel">
-          <div class="dashboard-section-heading">
-            <div><p class="panel-kicker">SETDEX</p><h2>Stärkste Sets</h2></div>
-            <button class="mini-system-button" type="button" data-carddex-view="sets">Alle Sets</button>
-          </div>
-          <div id="insightsTopSets" class="insights-progress-list"></div>
-        </section>
-
-        <section class="panel insights-panel">
-          <div class="dashboard-section-heading">
-            <div><p class="panel-kicker">MASTER SETS</p><h2>Set-Projekte</h2></div>
-            <button class="mini-system-button" type="button" data-carddex-view="sets">Projekte verwalten</button>
-          </div>
-          <div class="insights-project-stats">
-            <div><span>AKTIV</span><strong id="insightsProjectCount">0</strong></div>
-            <div><span>FERTIG</span><strong id="insightsCompletedProjects">0</strong></div>
-            <div><span>FEHLEND</span><strong id="insightsProjectMissing">0</strong></div>
-            <div><span>Ø FORTSCHRITT</span><strong id="insightsAverageProjectProgress">0 %</strong></div>
-          </div>
-          <div id="insightsProjectList" class="insights-progress-list"></div>
-        </section>
-
-        <section class="panel insights-panel">
-          <div class="dashboard-section-heading">
-            <div><p class="panel-kicker">SCANNER</p><h2>Aktivität der letzten 7 Tage</h2></div>
-            <button class="mini-system-button" type="button" data-carddex-view="history">Verlauf öffnen</button>
-          </div>
-          <div class="insights-activity-summary">
-            <div><span>7 TAGE</span><strong id="insightsScans7">0</strong></div>
-            <div><span>30 TAGE</span><strong id="insightsScans30">0</strong></div>
-            <div><span>ERFOLGSQUOTE 30 TAGE</span><strong id="insightsVerification30">0 %</strong></div>
-          </div>
-          <div id="insightsActivityChart" class="insights-activity-chart" aria-label="Scanneraktivität der letzten sieben Tage"></div>
-        </section>
-
-        <section class="panel insights-panel">
-          <div class="dashboard-section-heading"><div><p class="panel-kicker">DATENPFLEGE</p><h2>Offene Hinweise</h2></div></div>
-          <div class="insights-quality-grid">
-            <article class="insights-quality-card"><span>VORLÄUFIG</span><strong id="insightsProvisionalCards">0</strong><small>Karten noch nicht vollständig bestätigt</small></article>
-            <article class="insights-quality-card"><span>MANUELL PRÜFEN</span><strong id="insightsReviewCards">0</strong><small>Karten mit Prüfstatus</small></article>
-            <article class="insights-quality-card"><span>OHNE BILD</span><strong id="insightsMissingImages">0</strong><small>Kartendatensätze ohne Bildquelle</small></article>
-            <article class="insights-quality-card"><span>OHNE KAUFPREIS</span><strong id="insightsUnpricedEntries">0</strong><small>Sammlungseinträge ohne Preisangabe</small></article>
-          </div>
-        </section>
-      </div>
-
-      <div id="scannerView" class="hidden">
-      <section id="scanner-panel" class="panel intro-panel">
-        <div class="section-heading compact-heading">
-          <div class="step-badge">01</div>
-          <div>
-            <p class="panel-kicker">SCAN-MODUS</p>
-            <h2>Karte scannen</h2>
-          </div>
-        </div>
-
-        <div class="tip-box">
-          <span class="pixel-icon scan-icon" aria-hidden="true"></span>
-          <p id="scanTipText">Richte die Karte möglichst gerade aus. Bei glänzenden Karten helfen gleichmäßiges Licht und wenig Reflexionen.</p>
-          <i class="tip-led" aria-hidden="true"></i>
-        </div>
-
-        <div class="language-row">
-          <label for="language">Kartensprache</label>
-          <select id="language">
-            <option value="de" selected>Deutsch</option>
-            <option value="en">Englisch</option>
-          </select>
-        </div>
-
-        <div id="activeModeChips" class="mode-chips" aria-live="polite">
-          <span id="cameraMemoryChip" class="mode-chip hidden">KAMERA GESPEICHERT</span>
-          <span id="sleeveModeChip" class="mode-chip mode-chip-amber hidden">SCHUTZHÜLLE</span>
-        </div>
-
-        <div class="scan-console">
-          <div class="scan-display" aria-hidden="true">
-            <span class="scan-corner top-left"></span>
-            <span class="scan-corner top-right"></span>
-            <span class="scan-corner bottom-left"></span>
-            <span class="scan-corner bottom-right"></span>
-            <div class="card-silhouette">
-              <span></span><span></span><span></span>
-            </div>
-            <p><i id="scanLed" class="status-light state-off"></i> <span id="scanStatusText">KI AUS</span></p>
-          </div>
-
-          <div class="upload-actions">
-            <button id="openScannerButton" class="primary-button" type="button">
-              <span class="button-icon camera-symbol" aria-hidden="true"></span>
-              Live-Scanner
-            </button>
-            <label class="secondary-button">
-              <input id="galleryInput" type="file" accept="image/*" hidden />
-              <span class="button-icon gallery-symbol" aria-hidden="true"></span>
-              Bild auswählen
-            </label>
-          </div>
-        </div>
-
-        <label class="fallback-camera-link">
-          <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
-          Kamera-App als Alternative öffnen
-        </label>
-
-        <div id="previewWrap" class="preview-wrap hidden">
-          <div class="preview-label-row">
-            <strong id="previewLabel">Vorbereiteter Kartenausschnitt</strong>
-            <span id="cropStatus" class="status-chip">bereit</span>
-          </div>
-          <div class="preview-screen">
-            <span class="preview-corner top-left"></span>
-            <span class="preview-corner top-right"></span>
-            <span class="preview-corner bottom-left"></span>
-            <span class="preview-corner bottom-right"></span>
-            <img id="previewImage" alt="Vorbereiteter Ausschnitt der Pokémon-Karte" />
-          </div>
-          <p class="preview-help">Prüfe, ob die Karte vollständig sichtbar ist. Ein kleiner Rand außerhalb der Karte ist unproblematisch.</p>
-          <button id="analyzeButton" class="primary-button wide-button" type="button">Karte erkennen</button>
-        </div>
-      </section>
-
-      <section id="progressPanel" class="panel progress-panel hidden" aria-live="polite">
-        <div class="scanner-animation" aria-hidden="true">
-          <div class="mini-card"><div class="scan-line"></div></div>
-        </div>
-        <div class="progress-copy">
-          <strong id="progressTitle">Bild wird vorbereitet …</strong>
-          <span id="progressText">0 %</span>
-          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-        </div>
-      </section>
-
-      <section id="resultPanel" class="panel result-panel hidden">
-        <div class="section-heading">
-          <div class="step-badge">02</div>
-          <div>
-            <p class="panel-kicker">ERGEBNIS</p>
-            <h2>Erkannte Karte</h2>
-            <p>Wähle die Karte aus, die deinem Foto entspricht. Die passende Cardmarket-Seite wird anschließend direkt geöffnet.</p>
-          </div>
-        </div>
-        <div id="resultMessage" class="notice hidden"></div>
-        <div id="results" class="card-results"></div>
-      </section>
-
-      <section id="manualPanel" class="panel manual-panel">
-        <details>
-          <summary>Karte manuell suchen</summary>
-          <div class="manual-content">
-            <p>Nutze die manuelle Suche, wenn eine seltene oder stark spiegelnde Karte nicht eindeutig erkannt wurde.</p>
-            <div class="form-grid">
-              <label>
+<main>
+<div id="dashboardView">
+<section class="panel dashboard-hero-panel">
+<div class="section-heading evolution-dashboard-heading">
+<div class="step-badge">7000</div>
+<div>
+<p class="panel-kicker">COMMAND CENTER</p>
+<h2>Dein CardDex auf einen Blick</h2>
+<p>Bestand, Set-Projekte und offene Prüfungen – kompakt auf deinem Gerät.</p>
+</div>
+</div>
+<div aria-label="Sammlungsübersicht" class="dashboard-primary-stats">
+<div><span>KARTEN GESAMT</span><strong id="dashboardTotalCards">0</strong><small>inklusive Mehrfachkarten</small></div>
+<div><span>VERSCHIEDENE</span><strong id="dashboardUniqueCards">0</strong><small>eindeutige Karten</small></div>
+<div><span>SAMMLUNGEN</span><strong id="dashboardCollectionCount">0</strong><small>lokale Bereiche</small></div>
+<div><span>WUNSCHLISTE</span><strong id="dashboardWishlistCount">0</strong><small>gesuchte Karten</small></div>
+</div>
+<div class="dashboard-today-console">
+<div class="dashboard-today-header">
+<div><span>HEUTE GESCANNT</span><strong id="dashboardTodayScans">0</strong></div>
+<div><span>VERIFIZIERT</span><strong id="dashboardVerifiedToday">0</strong></div>
+<div><span>PRÜFEN</span><strong id="dashboardReviewToday">0</strong></div>
+</div>
+<div class="dashboard-verification-row">
+<span>ERFOLGSQUOTE HEUTE</span>
+<div class="dashboard-verification-track"><i id="dashboardVerificationBar"></i></div>
+<strong id="dashboardVerificationRate">0 %</strong>
+</div>
+</div>
+<div class="evolution-dashboard-command">
+<button class="primary-button evolution-scan-command" id="dashboardStartScanner" type="button">
+<span aria-hidden="true" class="evolution-action-icon evolution-camera-icon"></span>
+<span><small>HAUPTMODUL</small>Live-Scanner starten</span>
+<i aria-hidden="true">›</i>
+</button>
+</div>
+</section>
+<section class="panel dashboard-panel">
+<div class="dashboard-section-heading">
+<div><p class="panel-kicker">LETZTE AKTIVITÄT</p><h2>Letzte Scans</h2></div>
+<button class="mini-system-button" data-carddex-view="history" type="button">Alle anzeigen</button>
+</div>
+<div class="dashboard-recent-list" id="dashboardRecentScans"></div>
+</section>
+<section class="panel dashboard-panel">
+<div class="dashboard-section-heading">
+<div><p class="panel-kicker">LOKALE DATENBANK</p><h2>Sammlungen</h2></div>
+<button class="mini-system-button" data-carddex-view="collection" type="button">Verwalten</button>
+</div>
+<div class="dashboard-collection-list" id="dashboardCollections"></div>
+</section>
+</div>
+<div class="hidden" id="insightsView">
+<section class="panel insights-hero-panel">
+<div class="section-heading insights-heading">
+<div class="step-badge">7000</div>
+<div>
+<p class="panel-kicker">INSIGHTS-MODUS</p>
+<h2>Deine Sammlung in Zahlen</h2>
+<p>Bestand, Dubletten, Set-Projekte und Scanneraktivität werden aus deiner lokalen CardDex-Datenbank ausgewertet.</p>
+</div>
+<button class="mini-system-button" id="refreshInsightsButton" type="button">Aktualisieren</button>
+</div>
+<p aria-live="polite" class="insights-data-status" id="insightsDataStatus">Lokale Daten werden ausgewertet …</p>
+<div aria-label="Zentrale Sammlungsstatistik" class="insights-primary-stats">
+<article><span>EXEMPLARE</span><strong id="insightsTotalCopies">0</strong><small>gesamter Bestand</small></article>
+<article><span>VERSCHIEDENE</span><strong id="insightsUniqueCards">0</strong><small>eindeutige Karten</small></article>
+<article class="action-card"><span>DUBLETTEN</span><strong id="insightsDuplicateCopies">0</strong><small>zusätzliche Exemplare</small><button id="insightsOpenDuplicates" type="button">Anzeigen</button></article>
+<article class="action-card"><span>TAUSCH</span><strong id="insightsTradeCopies">0</strong><small>markierte Exemplare</small><button id="insightsOpenTrade" type="button">Anzeigen</button></article>
+<article><span>WUNSCHLISTE</span><strong id="insightsWishlistCards">0</strong><small>verschiedene Karten</small></article>
+<article><span>ERFASSTER EINKAUF</span><strong id="insightsPurchaseInvestment">0,00 €</strong><small>aktueller Bestand</small></article>
+</div>
+</section>
+<section class="panel insights-panel">
+<div class="dashboard-section-heading">
+<div><p class="panel-kicker">BESTAND</p><h2>Sammlungsstruktur</h2></div>
+<button class="mini-system-button" data-carddex-view="collection" type="button">Sammlungen öffnen</button>
+</div>
+<div class="insights-secondary-stats">
+<div><span>VARIANTEN</span><strong id="insightsUniqueVariants">0</strong></div>
+<div><span>VERKAUFT</span><strong id="insightsSoldCopies">0</strong></div>
+<div><span>GETAUSCHT</span><strong id="insightsTradedCopies">0</strong></div>
+<div><span>WUNSCH-ZIELBUDGET</span><strong id="insightsWishlistBudget">0,00 €</strong></div>
+</div>
+<div class="insights-progress-list" id="insightsCollectionBreakdown"></div>
+</section>
+<section class="insights-two-column">
+<div class="panel insights-panel">
+<div class="dashboard-section-heading"><div><p class="panel-kicker">KARTENSPRACHEN</p><h2>Sprachen</h2></div></div>
+<div class="insights-progress-list compact" id="insightsLanguageBreakdown"></div>
+</div>
+<div class="panel insights-panel">
+<div class="dashboard-section-heading"><div><p class="panel-kicker">AUSFÜHRUNGEN</p><h2>Varianten</h2></div></div>
+<div class="insights-progress-list compact" id="insightsVariantBreakdown"></div>
+</div>
+</section>
+<section class="panel insights-panel">
+<div class="dashboard-section-heading">
+<div><p class="panel-kicker">SETDEX</p><h2>Stärkste Sets</h2></div>
+<button class="mini-system-button" data-carddex-view="sets" type="button">Alle Sets</button>
+</div>
+<div class="insights-progress-list" id="insightsTopSets"></div>
+</section>
+<section class="panel insights-panel">
+<div class="dashboard-section-heading">
+<div><p class="panel-kicker">MASTER SETS</p><h2>Set-Projekte</h2></div>
+<button class="mini-system-button" data-carddex-view="sets" type="button">Projekte verwalten</button>
+</div>
+<div class="insights-project-stats">
+<div><span>AKTIV</span><strong id="insightsProjectCount">0</strong></div>
+<div><span>FERTIG</span><strong id="insightsCompletedProjects">0</strong></div>
+<div><span>FEHLEND</span><strong id="insightsProjectMissing">0</strong></div>
+<div><span>Ø FORTSCHRITT</span><strong id="insightsAverageProjectProgress">0 %</strong></div>
+</div>
+<div class="insights-progress-list" id="insightsProjectList"></div>
+</section>
+<section class="panel insights-panel">
+<div class="dashboard-section-heading">
+<div><p class="panel-kicker">SCANNER</p><h2>Aktivität der letzten 7 Tage</h2></div>
+<button class="mini-system-button" data-carddex-view="history" type="button">Verlauf öffnen</button>
+</div>
+<div class="insights-activity-summary">
+<div><span>7 TAGE</span><strong id="insightsScans7">0</strong></div>
+<div><span>30 TAGE</span><strong id="insightsScans30">0</strong></div>
+<div><span>ERFOLGSQUOTE 30 TAGE</span><strong id="insightsVerification30">0 %</strong></div>
+</div>
+<div aria-label="Scanneraktivität der letzten sieben Tage" class="insights-activity-chart" id="insightsActivityChart"></div>
+</section>
+<section class="panel insights-panel">
+<div class="dashboard-section-heading"><div><p class="panel-kicker">DATENPFLEGE</p><h2>Offene Hinweise</h2></div></div>
+<div class="insights-quality-grid">
+<article class="insights-quality-card"><span>VORLÄUFIG</span><strong id="insightsProvisionalCards">0</strong><small>Karten noch nicht vollständig bestätigt</small></article>
+<article class="insights-quality-card"><span>MANUELL PRÜFEN</span><strong id="insightsReviewCards">0</strong><small>Karten mit Prüfstatus</small></article>
+<article class="insights-quality-card"><span>OHNE BILD</span><strong id="insightsMissingImages">0</strong><small>Kartendatensätze ohne Bildquelle</small></article>
+<article class="insights-quality-card"><span>OHNE KAUFPREIS</span><strong id="insightsUnpricedEntries">0</strong><small>Sammlungseinträge ohne Preisangabe</small></article>
+</div>
+</section>
+</div>
+<div class="hidden" id="scannerView">
+<section class="panel intro-panel" id="scanner-panel">
+<div class="section-heading compact-heading evolution-module-heading">
+<div class="step-badge">01</div>
+<div><p class="panel-kicker">SCAN-MODUS</p><h2>Karte erfassen</h2></div>
+<span class="evolution-module-status"><i class="status-light state-green"></i> BEREIT</span>
+</div>
+<div class="tip-box evolution-tip-box">
+<span aria-hidden="true" class="evolution-tip-target"></span>
+<p id="scanTipText">Richte die Karte gerade aus. Gleichmäßiges Licht reduziert Spiegelungen.</p>
+<button aria-label="Scanner-Hinweis" class="evolution-info-button" type="button">i</button>
+</div>
+<div class="language-row evolution-language-row">
+<label for="language">Kartensprache</label>
+<select id="language"><option selected="" value="de">Deutsch</option><option value="en">Englisch</option></select>
+</div>
+<div aria-live="polite" class="mode-chips" id="activeModeChips">
+<span class="mode-chip hidden" id="cameraMemoryChip">KAMERA GESPEICHERT</span>
+<span class="mode-chip mode-chip-amber hidden" id="sleeveModeChip">SCHUTZHÜLLE</span>
+</div>
+<div class="scan-console evolution-scan-console">
+<div aria-hidden="true" class="scan-display evolution-scan-display">
+<div class="evolution-scan-screen-grid"></div>
+<span class="scan-corner top-left"></span><span class="scan-corner top-right"></span>
+<span class="scan-corner bottom-left"></span><span class="scan-corner bottom-right"></span>
+<div class="evolution-card-target"><i></i><b></b><span></span><span></span></div>
+<div class="evolution-scan-readout"><p><i class="status-light state-off" id="scanLed"></i><span id="scanStatusText">KI AUS</span></p><small>OPTICAL CARD READER</small></div>
+</div>
+<div class="upload-actions evolution-upload-actions">
+<button class="primary-button evolution-action-button" id="openScannerButton" type="button">
+<span aria-hidden="true" class="evolution-action-icon evolution-camera-icon"></span>
+<span><small>KAMERA</small>Live-Scanner</span><i aria-hidden="true">›</i>
+</button>
+<label class="secondary-button evolution-action-button evolution-gallery-action">
+<input accept="image/*" hidden="" id="galleryInput" type="file"/>
+<span aria-hidden="true" class="evolution-action-icon evolution-gallery-icon"></span>
+<span><small>MEDIATHEK</small>Bild auswählen</span><i aria-hidden="true">›</i>
+</label>
+</div>
+</div>
+<label class="fallback-camera-link evolution-fallback-link">
+<input accept="image/*" capture="environment" hidden="" id="cameraInput" type="file"/>
+  Kamera-App als Alternative öffnen
+</label>
+<div class="preview-wrap hidden" id="previewWrap">
+<div class="preview-label-row"><strong id="previewLabel">Vorbereiteter Kartenausschnitt</strong><span class="status-chip" id="cropStatus">bereit</span></div>
+<div class="preview-screen"><span class="preview-corner top-left"></span><span class="preview-corner top-right"></span><span class="preview-corner bottom-left"></span><span class="preview-corner bottom-right"></span><img alt="Vorbereiteter Ausschnitt der Pokémon-Karte" id="previewImage"/></div>
+<p class="preview-help">Prüfe, ob die Karte vollständig sichtbar ist. Ein kleiner Rand ist unproblematisch.</p>
+<button class="primary-button wide-button" id="analyzeButton" type="button">Karte erkennen</button>
+</div>
+</section>
+<section aria-live="polite" class="panel progress-panel hidden" id="progressPanel">
+<div aria-hidden="true" class="scanner-animation">
+<div class="mini-card"><div class="scan-line"></div></div>
+</div>
+<div class="progress-copy">
+<strong id="progressTitle">Bild wird vorbereitet …</strong>
+<span id="progressText">0 %</span>
+<div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+</div>
+</section>
+<section class="panel result-panel hidden" id="resultPanel">
+<div class="section-heading">
+<div class="step-badge">02</div>
+<div>
+<p class="panel-kicker">ERGEBNIS</p>
+<h2>Erkannte Karte</h2>
+<p>Wähle die Karte aus, die deinem Foto entspricht. Die passende Cardmarket-Seite wird anschließend direkt geöffnet.</p>
+</div>
+</div>
+<div class="notice hidden" id="resultMessage"></div>
+<div class="card-results" id="results"></div>
+</section>
+<section class="panel manual-panel" id="manualPanel">
+<details>
+<summary>Karte manuell suchen</summary>
+<div class="manual-content">
+<p>Nutze die manuelle Suche, wenn eine seltene oder stark spiegelnde Karte nicht eindeutig erkannt wurde.</p>
+<div class="form-grid">
+<label>
                 Kartenname
-                <input id="manualName" type="text" autocomplete="off" placeholder="z. B. Mega-Stalobor ex" />
-              </label>
-              <label>
+                <input autocomplete="off" id="manualName" placeholder="z. B. Mega-Stalobor ex" type="text"/>
+</label>
+<label>
                 Kartennummer
-                <input id="manualNumber" type="text" autocomplete="off" placeholder="z. B. 065/084" />
-              </label>
-            </div>
-            <button id="manualSearchButton" class="secondary-button wide-button" type="button">Treffer suchen</button>
-          </div>
-        </details>
-      </section>
-      </div>
-
-      <div id="collectionView" class="hidden">
-        <section class="panel collection-panel">
-          <div class="section-heading">
-            <div class="step-badge">DB</div>
-            <div>
-              <p class="panel-kicker">LOKALE DATENBANK</p>
-              <h2 id="collectionTitle">Meine Sammlung</h2>
-              <p id="collectionDescription">Deine Karten werden sicher auf diesem Gerät gespeichert. Tippe eine Karte an, um ihre Details zu bearbeiten. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
-            </div>
-          </div>
-
-          <div class="collection-toolbar">
-            <label>Aktive Sammlung
+                <input autocomplete="off" id="manualNumber" placeholder="z. B. 065/084" type="text"/>
+</label>
+</div>
+<button class="secondary-button wide-button" id="manualSearchButton" type="button">Treffer suchen</button>
+</div>
+</details>
+</section>
+</div>
+<div class="hidden" id="collectionView">
+<section class="panel collection-panel">
+<div class="section-heading">
+<div class="step-badge">DB</div>
+<div>
+<p class="panel-kicker">LOKALE DATENBANK</p>
+<h2 id="collectionTitle">Meine Sammlung</h2>
+<p id="collectionDescription">Deine Karten werden sicher auf diesem Gerät gespeichert. Tippe eine Karte an, um ihre Details zu bearbeiten. Exportiere regelmäßig eine Sicherung für Gerätewechsel und Neuinstallationen.</p>
+</div>
+</div>
+<div class="collection-toolbar">
+<label>Aktive Sammlung
               <select id="activeCollectionSelect"></select>
-            </label>
-            <div class="collection-toolbar-actions">
-              <button id="createCollectionButton" class="secondary-button" type="button">Neue Sammlung</button>
-              <button id="openWishlistButton" class="mini-system-button wishlist-toolbar-button" type="button">Wunschliste</button>
-              <button id="renameCollectionButton" class="mini-system-button" type="button">Umbenennen</button>
-              <button id="deleteCollectionButton" class="mini-system-button danger-button" type="button">Löschen</button>
-            </div>
-          </div>
-
-          <div class="collection-stats collection-stats-organizer">
-            <div><span id="collectionTotalLabel">KARTEN GESAMT</span><strong id="collectionTotalCount">0</strong></div>
-            <div><span id="collectionUniqueLabel">VERSCHIEDENE</span><strong id="collectionUniqueCount">0</strong></div>
-            <div><span id="collectionThirdLabel">DOPPELTE</span><strong id="collectionDuplicateCount">0</strong></div>
-            <div><span id="collectionVisibleLabel">GEFILTERT</span><strong id="collectionVisibleCount">0</strong></div>
-          </div>
-
-          <section class="collection-browser" aria-label="Sammlung durchsuchen und sortieren">
-            <div class="collection-search-row">
-              <label for="collectionSearchInput">
+</label>
+<div class="collection-toolbar-actions">
+<button class="secondary-button" id="createCollectionButton" type="button">Neue Sammlung</button>
+<button class="mini-system-button wishlist-toolbar-button" id="openWishlistButton" type="button">Wunschliste</button>
+<button class="mini-system-button" id="renameCollectionButton" type="button">Umbenennen</button>
+<button class="mini-system-button danger-button" id="deleteCollectionButton" type="button">Löschen</button>
+</div>
+</div>
+<div class="collection-stats collection-stats-organizer">
+<div><span id="collectionTotalLabel">KARTEN GESAMT</span><strong id="collectionTotalCount">0</strong></div>
+<div><span id="collectionUniqueLabel">VERSCHIEDENE</span><strong id="collectionUniqueCount">0</strong></div>
+<div><span id="collectionThirdLabel">DOPPELTE</span><strong id="collectionDuplicateCount">0</strong></div>
+<div><span id="collectionVisibleLabel">GEFILTERT</span><strong id="collectionVisibleCount">0</strong></div>
+</div>
+<section aria-label="Sammlung durchsuchen und sortieren" class="collection-browser">
+<div class="collection-search-row">
+<label for="collectionSearchInput">
                 Sammlung durchsuchen
                 <span class="collection-search-control">
-                  <input id="collectionSearchInput" type="search" autocomplete="off" enterkeyhint="search" placeholder="Name, Set, Nummer oder Notiz …">
-                  <button id="clearCollectionSearchButton" class="collection-search-clear" type="button" aria-label="Suchbegriff löschen">×</button>
-                </span>
-              </label>
-            </div>
-
-            <div class="collection-quick-filters" role="group" aria-label="Schnellfilter">
-              <button class="collection-filter-chip active" type="button" data-collection-filter="all">ALLE</button>
-              <button class="collection-filter-chip collection-only-control" type="button" data-collection-filter="duplicates">DOPPELTE</button>
-              <button class="collection-filter-chip collection-only-control" type="button" data-collection-filter="trade">TAUSCH</button>
-              <button class="collection-filter-chip" type="button" data-collection-filter="provisional">VORLÄUFIG</button>
-              <button class="collection-filter-chip" type="button" data-collection-filter="review">PRÜFEN</button>
-              <button class="collection-filter-chip" type="button" data-collection-filter="notes">MIT NOTIZ</button>
-              <button class="collection-filter-chip wishlist-only-control hidden" type="button" data-collection-filter="priority-high">HOHE PRIORITÄT</button>
-            </div>
-
-            <div class="collection-filter-grid">
-              <label>
+<input autocomplete="off" enterkeyhint="search" id="collectionSearchInput" placeholder="Name, Set, Nummer oder Notiz …" type="search"/>
+<button aria-label="Suchbegriff löschen" class="collection-search-clear" id="clearCollectionSearchButton" type="button">×</button>
+</span>
+</label>
+</div>
+<div aria-label="Schnellfilter" class="collection-quick-filters" role="group">
+<button class="collection-filter-chip active" data-collection-filter="all" type="button">ALLE</button>
+<button class="collection-filter-chip collection-only-control" data-collection-filter="duplicates" type="button">DOPPELTE</button>
+<button class="collection-filter-chip collection-only-control" data-collection-filter="trade" type="button">TAUSCH</button>
+<button class="collection-filter-chip" data-collection-filter="provisional" type="button">VORLÄUFIG</button>
+<button class="collection-filter-chip" data-collection-filter="review" type="button">PRÜFEN</button>
+<button class="collection-filter-chip" data-collection-filter="notes" type="button">MIT NOTIZ</button>
+<button class="collection-filter-chip wishlist-only-control hidden" data-collection-filter="priority-high" type="button">HOHE PRIORITÄT</button>
+</div>
+<div class="collection-filter-grid">
+<label>
                 Kartenfilter
                 <select id="collectionFilterSelect">
-                  <option value="all">Alle Karten</option>
-                  <option value="duplicates" data-collection-only>Nur doppelte Karten</option>
-                  <option value="single" data-collection-only>Nur Einzelkarten</option>
-                  <option value="verified">Verifiziert</option>
-                  <option value="provisional">Vorläufig erkannt</option>
-                  <option value="review">Manuell prüfen</option>
-                  <option value="notes">Mit Notizen</option>
-                  <option value="purchase" data-collection-only>Mit Kaufpreis</option>
-                  <option value="trade" data-collection-only>Für Tausch markiert</option>
-                  <option value="priority-high" data-wishlist-only>Hohe Priorität</option>
-                  <option value="target-price" data-wishlist-only>Mit Zielpreis</option>
-                </select>
-              </label>
-              <label>
+<option value="all">Alle Karten</option>
+<option data-collection-only="" value="duplicates">Nur doppelte Karten</option>
+<option data-collection-only="" value="single">Nur Einzelkarten</option>
+<option value="verified">Verifiziert</option>
+<option value="provisional">Vorläufig erkannt</option>
+<option value="review">Manuell prüfen</option>
+<option value="notes">Mit Notizen</option>
+<option data-collection-only="" value="purchase">Mit Kaufpreis</option>
+<option data-collection-only="" value="trade">Für Tausch markiert</option>
+<option data-wishlist-only="" value="priority-high">Hohe Priorität</option>
+<option data-wishlist-only="" value="target-price">Mit Zielpreis</option>
+</select>
+</label>
+<label>
                 Sprache
                 <select id="collectionLanguageFilter">
-                  <option value="all">Alle Sprachen</option>
-                </select>
-              </label>
-              <label>
+<option value="all">Alle Sprachen</option>
+</select>
+</label>
+<label>
                 Sortierung
                 <select id="collectionSortSelect">
-                  <option value="name-asc">Name A–Z</option>
-                  <option value="name-desc">Name Z–A</option>
-                  <option value="set-number">Set und Kartennummer</option>
-                  <option value="quantity-desc">Anzahl absteigend</option>
-                  <option value="newest">Zuletzt geändert</option>
-                  <option value="purchase-desc" data-collection-only>Kaufpreis absteigend</option>
-                  <option value="priority-desc" data-wishlist-only>Priorität</option>
-                  <option value="target-price-desc" data-wishlist-only>Zielpreis absteigend</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="collection-filter-summary">
-              <p id="collectionFilterSummary">Alle Karten werden angezeigt.</p>
-              <button id="resetCollectionFiltersButton" class="mini-system-button" type="button">Filter zurücksetzen</button>
-            </div>
-          </section>
-
-          <div class="backup-actions">
-            <button id="exportCollectionButton" class="secondary-button" type="button">JSON-Sicherung exportieren</button>
-            <button id="importCollectionButton" class="secondary-button" type="button">Sicherung importieren</button>
-            <input id="importCollectionInput" type="file" accept="application/json,.json" hidden>
-          </div>
-
-          <div id="collectionCards" class="collection-cards"></div>
-        </section>
-      </div>
-
-
-      <div id="setsView" class="hidden">
-        <section id="setOverviewPanel" class="panel sets-panel">
-          <div class="section-heading">
-            <div class="step-badge">04</div>
-            <div>
-              <p class="panel-kicker">SETDEX-MODUS</p>
-              <h2>Set-Fortschritt</h2>
-              <p>Sieh auf einen Blick, welche Sets du begonnen hast, welche Karten fehlen und wo doppelte Exemplare liegen.</p>
-            </div>
-          </div>
-
-          <div class="set-overview-stats">
-            <div><span>GESTARTET</span><strong id="setStartedCount">0</strong><small>Sets mit Karten</small></div>
-            <div><span>VOLLSTÄNDIG</span><strong id="setCompleteCount">0</strong><small>komplette Sets</small></div>
-            <div><span>FEHLEND</span><strong id="setMissingCount">0</strong><small>bekannte Karten</small></div>
-            <div><span>DOPPELT</span><strong id="setDuplicateCopiesCount">0</strong><small>zusätzliche Exemplare</small></div>
-          </div>
-
-          <section class="set-browser" aria-label="Sets durchsuchen und sortieren">
-            <div class="set-search-row">
-              <label for="setOverviewSearchInput">
-                <span>SET SUCHEN</span>
-                <span class="set-search-control">
-                  <input id="setOverviewSearchInput" type="search" autocomplete="off" enterkeyhint="search" placeholder="Setname oder Setcode …">
-                  <button id="clearSetOverviewSearchButton" type="button" aria-label="Set-Suche löschen">×</button>
-                </span>
-              </label>
-              <button id="refreshSetOverviewButton" class="mini-system-button" type="button">Aktualisieren</button>
-            </div>
-
-            <div class="set-filter-chips" role="group" aria-label="Setfilter">
-              <button class="set-filter-chip active" type="button" data-set-overview-filter="all">ALLE</button>
-              <button class="set-filter-chip" type="button" data-set-overview-filter="incomplete">UNVOLLSTÄNDIG</button>
-              <button class="set-filter-chip" type="button" data-set-overview-filter="complete">KOMPLETT</button>
-              <button class="set-filter-chip" type="button" data-set-overview-filter="duplicates">DOPPELTE</button>
-              <button class="set-filter-chip" type="button" data-set-overview-filter="wishlist">WUNSCHLISTE</button>
-            </div>
-
-            <div class="set-control-grid">
-              <label>
+<option value="name-asc">Name A–Z</option>
+<option value="name-desc">Name Z–A</option>
+<option value="set-number">Set und Kartennummer</option>
+<option value="quantity-desc">Anzahl absteigend</option>
+<option value="newest">Zuletzt geändert</option>
+<option data-collection-only="" value="purchase-desc">Kaufpreis absteigend</option>
+<option data-wishlist-only="" value="priority-desc">Priorität</option>
+<option data-wishlist-only="" value="target-price-desc">Zielpreis absteigend</option>
+</select>
+</label>
+</div>
+<div class="collection-filter-summary">
+<p id="collectionFilterSummary">Alle Karten werden angezeigt.</p>
+<button class="mini-system-button" id="resetCollectionFiltersButton" type="button">Filter zurücksetzen</button>
+</div>
+</section>
+<div class="backup-actions">
+<button class="secondary-button" id="exportCollectionButton" type="button">JSON-Sicherung exportieren</button>
+<button class="secondary-button" id="importCollectionButton" type="button">Sicherung importieren</button>
+<input accept="application/json,.json" hidden="" id="importCollectionInput" type="file"/>
+</div>
+<div class="collection-cards" id="collectionCards"></div>
+</section>
+</div>
+<div class="hidden" id="setsView">
+<section class="panel sets-panel" id="setOverviewPanel">
+<div class="section-heading">
+<div class="step-badge">04</div>
+<div>
+<p class="panel-kicker">SETDEX-MODUS</p>
+<h2>Set-Fortschritt</h2>
+<p>Sieh auf einen Blick, welche Sets du begonnen hast, welche Karten fehlen und wo doppelte Exemplare liegen.</p>
+</div>
+</div>
+<div class="set-overview-stats">
+<div><span>GESTARTET</span><strong id="setStartedCount">0</strong><small>Sets mit Karten</small></div>
+<div><span>VOLLSTÄNDIG</span><strong id="setCompleteCount">0</strong><small>komplette Sets</small></div>
+<div><span>FEHLEND</span><strong id="setMissingCount">0</strong><small>bekannte Karten</small></div>
+<div><span>DOPPELT</span><strong id="setDuplicateCopiesCount">0</strong><small>zusätzliche Exemplare</small></div>
+</div>
+<section aria-label="Sets durchsuchen und sortieren" class="set-browser">
+<div class="set-search-row">
+<label for="setOverviewSearchInput">
+<span>SET SUCHEN</span>
+<span class="set-search-control">
+<input autocomplete="off" enterkeyhint="search" id="setOverviewSearchInput" placeholder="Setname oder Setcode …" type="search"/>
+<button aria-label="Set-Suche löschen" id="clearSetOverviewSearchButton" type="button">×</button>
+</span>
+</label>
+<button class="mini-system-button" id="refreshSetOverviewButton" type="button">Aktualisieren</button>
+</div>
+<div aria-label="Setfilter" class="set-filter-chips" role="group">
+<button class="set-filter-chip active" data-set-overview-filter="all" type="button">ALLE</button>
+<button class="set-filter-chip" data-set-overview-filter="incomplete" type="button">UNVOLLSTÄNDIG</button>
+<button class="set-filter-chip" data-set-overview-filter="complete" type="button">KOMPLETT</button>
+<button class="set-filter-chip" data-set-overview-filter="duplicates" type="button">DOPPELTE</button>
+<button class="set-filter-chip" data-set-overview-filter="wishlist" type="button">WUNSCHLISTE</button>
+</div>
+<div class="set-control-grid">
+<label>
                 ANZEIGE
                 <select id="setOverviewMode">
-                  <option value="owned" selected>Meine begonnenen Sets</option>
-                  <option value="projects">Meine Set-Projekte</option>
-                  <option value="all">Alle bekannten Sets</option>
-                </select>
-              </label>
-              <label>
+<option selected="" value="owned">Meine begonnenen Sets</option>
+<option value="projects">Meine Set-Projekte</option>
+<option value="all">Alle bekannten Sets</option>
+</select>
+</label>
+<label>
                 SORTIERUNG
                 <select id="setOverviewSort">
-                  <option value="progress-desc" selected>Fortschritt absteigend</option>
-                  <option value="cards-desc">Gesammelte Karten</option>
-                  <option value="missing-desc">Fehlende Karten</option>
-                  <option value="duplicates-desc">Doppelte Karten</option>
-                  <option value="name">Setname A–Z</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="set-browser-summary">
-              <p id="setOverviewSummary">Set-Daten werden vorbereitet.</p>
-              <p id="setOverviewStatus" class="set-data-status" role="status">Fortschritt basiert auf allen bekannten Karten eines Sets, einschließlich Secret Rares.</p>
-            </div>
-          </section>
-
-          <div id="setOverviewGrid" class="set-overview-grid"></div>
-        </section>
-
-        <section id="setDetailPanel" class="panel set-detail-panel hidden">
-          <div class="set-detail-topbar">
-            <button id="backToSetOverviewButton" class="mini-system-button" type="button">‹ Sets</button>
-            <div class="set-detail-sticky-summary" aria-live="polite">
-              <strong id="setStickyName">Pokémon-Set</strong>
-              <span id="setStickyProgress">0 % · 0 / 0</span>
-            </div>
-            <div class="set-detail-topbar-actions">
-              <button id="setDetailProjectButton" class="mini-system-button set-project-detail-button" type="button" aria-pressed="false">☆ Als Projekt merken</button>
-              <button id="refreshSetDetailButton" class="mini-system-button" type="button">Aktualisieren</button>
-            </div>
-          </div>
-
-          <div class="set-detail-hero">
-            <div class="set-detail-logo-wrap">
-              <img id="setDetailLogo" src="icons/card-placeholder.svg" alt="Set-Logo">
-            </div>
-            <div class="set-detail-title">
-              <p class="panel-kicker">SET-DETAILS</p>
-              <h2 id="setDetailName">Pokémon-Set</h2>
-              <span id="setDetailCode">SET</span>
-            </div>
-          </div>
-
-          <div class="set-detail-progress-console">
-            <div class="set-project-goal-row">
-              <label for="setProjectGoalSelect">
-                <span>SAMMELZIEL</span>
-                <select id="setProjectGoalSelect">
-                  <option value="numbers">Jede Kartennummer einmal</option>
-                  <option value="normal-reverse">Normal/Holo + Reverse</option>
-                  <option value="master">Alle bekannten Varianten</option>
-                </select>
-              </label>
-              <p id="setProjectGoalHint">Fortschritt wird nach jeder Kartennummer berechnet.</p>
-            </div>
-            <div class="set-detail-progress-heading">
-              <span><strong id="setDetailOwnedCount">0</strong> / <b id="setDetailTotalCount">0</b> <span id="setDetailProgressUnit">Karten</span></span>
-              <strong id="setDetailPercent">0 %</strong>
-            </div>
-            <div class="set-detail-progress-track"><i id="setDetailProgressBar"></i></div>
-            <div class="set-detail-mini-stats">
-              <div><span>REGULÄR</span><strong id="setDetailRegularCount">0 / 0</strong></div>
-              <div><span>SECRET</span><strong id="setDetailSecretCount">0 / 0</strong></div>
-              <div><span>FEHLEND</span><strong id="setDetailMissingCount">0</strong></div>
-              <div><span>DOPPELT</span><strong id="setDetailDuplicateCount">0</strong></div>
-              <div><span>WUNSCHLISTE</span><strong id="setDetailWishlistCount">0</strong></div>
-            </div>
-          </div>
-
-          <div class="set-project-actions">
-            <button id="addMissingSetToWishlistButton" class="secondary-button" type="button">Fehlende Karten zur Wunschliste</button>
-            <p id="setProjectActionStatus">Du kannst fehlende Karten gesammelt als Set-Projekt vormerken.</p>
-          </div>
-
-          <div id="setSelectionToolbar" class="set-selection-toolbar hidden" aria-live="polite">
-            <strong><span id="setSelectionCount">0</span> ausgewählt</strong>
-            <div>
-              <button id="selectVisibleSetCardsButton" class="mini-system-button" type="button">Sichtbare auswählen</button>
-              <button id="addSelectedSetCardsToWishlistButton" class="mini-system-button" type="button">Zur Wunschliste</button>
-              <button id="removeSelectedSetCardsFromWishlistButton" class="mini-system-button" type="button">Von Wunschliste</button>
-              <button id="clearSetSelectionButton" class="mini-system-button" type="button">Auswahl leeren</button>
-            </div>
-          </div>
-
-          <section class="set-detail-browser" aria-label="Karten im Set filtern">
-            <div class="set-search-row">
-              <label for="setDetailSearchInput">
-                <span>KARTE SUCHEN</span>
-                <span class="set-search-control">
-                  <input id="setDetailSearchInput" type="search" autocomplete="off" enterkeyhint="search" placeholder="Name, Nummer oder Seltenheit …">
-                  <button id="clearSetDetailSearchButton" type="button" aria-label="Kartensuche löschen">×</button>
-                </span>
-              </label>
-              <button id="toggleSetSelectionButton" class="mini-system-button" type="button" aria-pressed="false">Auswahl</button>
-            </div>
-            <div class="set-filter-chips" role="group" aria-label="Kartenfilter">
-              <button class="set-filter-chip active" type="button" data-set-detail-filter="all">ALLE</button>
-              <button class="set-filter-chip" type="button" data-set-detail-filter="owned">VORHANDEN</button>
-              <button class="set-filter-chip" type="button" data-set-detail-filter="missing">FEHLEND</button>
-              <button class="set-filter-chip" type="button" data-set-detail-filter="duplicates">DOPPELT</button>
-              <button class="set-filter-chip" type="button" data-set-detail-filter="wishlist">WUNSCHLISTE</button>
-              <button class="set-filter-chip" type="button" data-set-detail-filter="trade">TAUSCH</button>
-            </div>
-            <div class="set-browser-summary">
-              <p id="setDetailFilterSummary">Karten werden geladen.</p>
-              <p id="setDetailStatus" class="set-data-status" role="status">Fehlende Karten können direkt zur Wunschliste hinzugefügt werden.</p>
-            </div>
-          </section>
-
-          <div id="setDetailCards" class="set-detail-cards"></div>
-        </section>
-      </div>
-
-      <div id="setFloatingNavigation" class="set-floating-navigation hidden" aria-label="Set-Schnellnavigation">
-        <button id="openSetJumpMenuButton" class="set-floating-button set-floating-menu-button" type="button" aria-label="Sprungmarken öffnen" aria-expanded="false">☰</button>
-        <button id="setScrollTopButton" class="set-floating-button" type="button" aria-label="Zum Anfang der Set-Ansicht">↑</button>
-      </div>
-
-      <div id="setJumpMenuBackdrop" class="set-jump-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="setJumpMenuTitle">
-        <section class="set-jump-sheet">
-          <div class="set-jump-sheet-header">
-            <div><span>SETDEX-NAVIGATION</span><strong id="setJumpMenuTitle">Schnell springen</strong></div>
-            <button id="closeSetJumpMenuButton" type="button" aria-label="Sprungmenü schließen">×</button>
-          </div>
-          <div id="setJumpMenuActions" class="set-jump-actions"></div>
-        </section>
-      </div>
-
-      <div id="historyView" class="hidden">
-        <section class="panel history-panel">
-          <div class="section-heading">
-            <div class="step-badge">LOG</div>
-            <div>
-              <p class="panel-kicker">SCANNERHISTORIE</p>
-              <h2>Letzte Erkennungen</h2>
-              <p>Jeder Scan und jede manuelle Suche wird lokal protokolliert. Von hier kannst du Ergebnisse erneut prüfen oder direkt einer Sammlung zuordnen.</p>
-            </div>
-          </div>
-
-          <div class="history-stats">
-            <div><span>EINTRÄGE</span><strong id="historyTotalCount">0</strong></div>
-            <div><span>VERIFIZIERT</span><strong id="historyVerifiedCount">0</strong></div>
-            <div><span>PRÜFEN</span><strong id="historyReviewCount">0</strong></div>
-          </div>
-
-          <div class="history-toolbar">
-            <label>Status filtern
+<option selected="" value="progress-desc">Fortschritt absteigend</option>
+<option value="cards-desc">Gesammelte Karten</option>
+<option value="missing-desc">Fehlende Karten</option>
+<option value="duplicates-desc">Doppelte Karten</option>
+<option value="name">Setname A–Z</option>
+</select>
+</label>
+</div>
+<div class="set-browser-summary">
+<p id="setOverviewSummary">Set-Daten werden vorbereitet.</p>
+<p class="set-data-status" id="setOverviewStatus" role="status">Fortschritt basiert auf allen bekannten Karten eines Sets, einschließlich Secret Rares.</p>
+</div>
+</section>
+<div class="set-overview-grid" id="setOverviewGrid"></div>
+</section>
+<section class="panel set-detail-panel hidden" id="setDetailPanel">
+<div class="set-detail-topbar">
+<button class="mini-system-button" id="backToSetOverviewButton" type="button">‹ Sets</button>
+<div aria-live="polite" class="set-detail-sticky-summary">
+<strong id="setStickyName">Pokémon-Set</strong>
+<span id="setStickyProgress">0 % · 0 / 0</span>
+</div>
+<div class="set-detail-topbar-actions">
+<button aria-pressed="false" class="mini-system-button set-project-detail-button" id="setDetailProjectButton" type="button">☆ Als Projekt merken</button>
+<button class="mini-system-button" id="refreshSetDetailButton" type="button">Aktualisieren</button>
+</div>
+</div>
+<div class="set-detail-hero">
+<div class="set-detail-logo-wrap">
+<img alt="Set-Logo" id="setDetailLogo" src="icons/card-placeholder.svg"/>
+</div>
+<div class="set-detail-title">
+<p class="panel-kicker">SET-DETAILS</p>
+<h2 id="setDetailName">Pokémon-Set</h2>
+<span id="setDetailCode">SET</span>
+</div>
+</div>
+<div class="set-detail-progress-console">
+<div class="set-project-goal-row">
+<label for="setProjectGoalSelect">
+<span>SAMMELZIEL</span>
+<select id="setProjectGoalSelect">
+<option value="numbers">Jede Kartennummer einmal</option>
+<option value="normal-reverse">Normal/Holo + Reverse</option>
+<option value="master">Alle bekannten Varianten</option>
+</select>
+</label>
+<p id="setProjectGoalHint">Fortschritt wird nach jeder Kartennummer berechnet.</p>
+</div>
+<div class="set-detail-progress-heading">
+<span><strong id="setDetailOwnedCount">0</strong> / <b id="setDetailTotalCount">0</b> <span id="setDetailProgressUnit">Karten</span></span>
+<strong id="setDetailPercent">0 %</strong>
+</div>
+<div class="set-detail-progress-track"><i id="setDetailProgressBar"></i></div>
+<div class="set-detail-mini-stats">
+<div><span>REGULÄR</span><strong id="setDetailRegularCount">0 / 0</strong></div>
+<div><span>SECRET</span><strong id="setDetailSecretCount">0 / 0</strong></div>
+<div><span>FEHLEND</span><strong id="setDetailMissingCount">0</strong></div>
+<div><span>DOPPELT</span><strong id="setDetailDuplicateCount">0</strong></div>
+<div><span>WUNSCHLISTE</span><strong id="setDetailWishlistCount">0</strong></div>
+</div>
+</div>
+<div class="set-project-actions">
+<button class="secondary-button" id="addMissingSetToWishlistButton" type="button">Fehlende Karten zur Wunschliste</button>
+<p id="setProjectActionStatus">Du kannst fehlende Karten gesammelt als Set-Projekt vormerken.</p>
+</div>
+<div aria-live="polite" class="set-selection-toolbar hidden" id="setSelectionToolbar">
+<strong><span id="setSelectionCount">0</span> ausgewählt</strong>
+<div>
+<button class="mini-system-button" id="selectVisibleSetCardsButton" type="button">Sichtbare auswählen</button>
+<button class="mini-system-button" id="addSelectedSetCardsToWishlistButton" type="button">Zur Wunschliste</button>
+<button class="mini-system-button" id="removeSelectedSetCardsFromWishlistButton" type="button">Von Wunschliste</button>
+<button class="mini-system-button" id="clearSetSelectionButton" type="button">Auswahl leeren</button>
+</div>
+</div>
+<section aria-label="Karten im Set filtern" class="set-detail-browser">
+<div class="set-search-row">
+<label for="setDetailSearchInput">
+<span>KARTE SUCHEN</span>
+<span class="set-search-control">
+<input autocomplete="off" enterkeyhint="search" id="setDetailSearchInput" placeholder="Name, Nummer oder Seltenheit …" type="search"/>
+<button aria-label="Kartensuche löschen" id="clearSetDetailSearchButton" type="button">×</button>
+</span>
+</label>
+<button aria-pressed="false" class="mini-system-button" id="toggleSetSelectionButton" type="button">Auswahl</button>
+</div>
+<div aria-label="Kartenfilter" class="set-filter-chips" role="group">
+<button class="set-filter-chip active" data-set-detail-filter="all" type="button">ALLE</button>
+<button class="set-filter-chip" data-set-detail-filter="owned" type="button">VORHANDEN</button>
+<button class="set-filter-chip" data-set-detail-filter="missing" type="button">FEHLEND</button>
+<button class="set-filter-chip" data-set-detail-filter="duplicates" type="button">DOPPELT</button>
+<button class="set-filter-chip" data-set-detail-filter="wishlist" type="button">WUNSCHLISTE</button>
+<button class="set-filter-chip" data-set-detail-filter="trade" type="button">TAUSCH</button>
+</div>
+<div class="set-browser-summary">
+<p id="setDetailFilterSummary">Karten werden geladen.</p>
+<p class="set-data-status" id="setDetailStatus" role="status">Fehlende Karten können direkt zur Wunschliste hinzugefügt werden.</p>
+</div>
+</section>
+<div class="set-detail-cards" id="setDetailCards"></div>
+</section>
+</div>
+<div aria-label="Set-Schnellnavigation" class="set-floating-navigation hidden" id="setFloatingNavigation">
+<button aria-expanded="false" aria-label="Sprungmarken öffnen" class="set-floating-button set-floating-menu-button" id="openSetJumpMenuButton" type="button">☰</button>
+<button aria-label="Zum Anfang der Set-Ansicht" class="set-floating-button" id="setScrollTopButton" type="button">↑</button>
+</div>
+<div aria-labelledby="setJumpMenuTitle" aria-modal="true" class="set-jump-backdrop hidden" id="setJumpMenuBackdrop" role="dialog">
+<section class="set-jump-sheet">
+<div class="set-jump-sheet-header">
+<div><span>SETDEX-NAVIGATION</span><strong id="setJumpMenuTitle">Schnell springen</strong></div>
+<button aria-label="Sprungmenü schließen" id="closeSetJumpMenuButton" type="button">×</button>
+</div>
+<div class="set-jump-actions" id="setJumpMenuActions"></div>
+</section>
+</div>
+<div class="hidden" id="historyView">
+<section class="panel history-panel">
+<div class="section-heading">
+<div class="step-badge">LOG</div>
+<div>
+<p class="panel-kicker">SCANNERHISTORIE</p>
+<h2>Letzte Erkennungen</h2>
+<p>Jeder Scan und jede manuelle Suche wird lokal protokolliert. Von hier kannst du Ergebnisse erneut prüfen oder direkt einer Sammlung zuordnen.</p>
+</div>
+</div>
+<div class="history-stats">
+<div><span>EINTRÄGE</span><strong id="historyTotalCount">0</strong></div>
+<div><span>VERIFIZIERT</span><strong id="historyVerifiedCount">0</strong></div>
+<div><span>PRÜFEN</span><strong id="historyReviewCount">0</strong></div>
+</div>
+<div class="history-toolbar">
+<label>Status filtern
               <select id="historyFilter">
-                <option value="all">Alle Einträge</option>
-                <option value="verified">Verifiziert</option>
-                <option value="provisional">Vorläufig erkannt</option>
-                <option value="review">Manuell prüfen</option>
-              </select>
-            </label>
-            <button id="clearHistoryButton" class="mini-system-button danger-button" type="button">Historie leeren</button>
-          </div>
+<option value="all">Alle Einträge</option>
+<option value="verified">Verifiziert</option>
+<option value="provisional">Vorläufig erkannt</option>
+<option value="review">Manuell prüfen</option>
+</select>
+</label>
+<button class="mini-system-button danger-button" id="clearHistoryButton" type="button">Historie leeren</button>
+</div>
+<div class="history-list" id="historyList"></div>
+</section>
+</div>
+</main>
+<footer>
+<div class="footer-brand">
+<strong>CARDEX AI</strong>
+<span id="footerVersionText">PERSONAL CARD ASSISTANT · v7.0 · EVOLUTION</span>
+</div>
+<div aria-hidden="true" class="footer-leds">
+<span>POWER <i class="status-light state-amber pulse" id="footerPowerLed"></i></span>
+<span>AI <i class="status-light state-off" id="footerAiLed"></i></span>
+<span>SYNC <i class="status-light state-off" id="footerSyncLed"></i></span>
+</div>
+<p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
+</footer>
+</div>
+<nav aria-label="CardDex Hauptsteuerung" class="evolution-bottom-dock">
+<button aria-label="Startseite" aria-selected="true" class="evolution-dock-button active" id="showDashboardView" type="button"><span class="evolution-dock-icon home"></span><strong>START</strong></button>
+<button aria-label="Scanner" aria-selected="false" class="evolution-dock-button evolution-dock-scan" id="showScannerView" type="button"><span class="evolution-dock-icon scan"></span><strong>SCAN</strong></button>
+<button aria-expanded="false" aria-label="Systemmenü öffnen" class="evolution-dock-button" id="openSystemMenuButton" type="button"><span class="evolution-dock-icon system"></span><strong>SYSTEM</strong></button>
+</nav>
+<div aria-hidden="true" class="evolution-system-backdrop hidden" id="systemMenuBackdrop"></div>
+<aside aria-hidden="true" aria-labelledby="systemMenuTitle" aria-modal="true" class="evolution-system-sheet hidden" id="systemMenuSheet" role="dialog">
+<div class="evolution-system-sheet-rail"><div class="evolution-system-sheet-lens"><i></i></div><div><span>CARDEX SYSTEM</span><strong id="systemMenuTitle">Module</strong></div><button aria-label="Systemmenü schließen" id="closeSystemMenuButton" type="button">×</button></div>
+<div class="evolution-system-grid">
+<button id="showCollectionView" type="button"><span class="evolution-menu-icon collection"></span><strong>Sammlung</strong><small>Bestand &amp; Dubletten</small></button>
+<button id="systemOpenWishlistButton" type="button"><span class="evolution-menu-icon wishlist"></span><strong>Wunschliste</strong><small>Gesuchte Karten</small></button>
+<button id="showSetsView" type="button"><span class="evolution-menu-icon sets"></span><strong>Sets</strong><small>Projekte &amp; Fortschritt</small></button>
+<button id="showHistoryView" type="button"><span class="evolution-menu-icon history"></span><strong>Verlauf</strong><small>Letzte Erkennungen</small></button>
+<button id="showInsightsView" type="button"><span class="evolution-menu-icon insights"></span><strong>Insights</strong><small>Statistik &amp; Pflege</small></button>
+<button aria-controls="settingsDrawer" aria-expanded="false" id="openSettingsButton" type="button"><span class="evolution-menu-icon settings"></span><strong>Einstellungen</strong><small>System konfigurieren</small></button>
+</div>
+<div class="evolution-system-sheet-status"><span><i class="status-light state-green"></i> POWER</span><span><i class="status-light state-green"></i> LOCAL DB</span><span><i class="status-light state-off"></i> WORKER 2.2.1</span></div>
+</aside>
 
-          <div id="historyList" class="history-list"></div>
-        </section>
-      </div>
-    </main>
-
-    <footer>
-      <div class="footer-brand">
-        <strong>CARDEX AI</strong>
-        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.15.1 · SET NAVIGATION</span>
-      </div>
-      <div class="footer-leds" aria-hidden="true">
-        <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
-        <span>AI <i id="footerAiLed" class="status-light state-off"></i></span>
-        <span>SYNC <i id="footerSyncLed" class="status-light state-off"></i></span>
-      </div>
-      <p>Private Fan-Anwendung. Pokémon und Cardmarket sind Marken ihrer jeweiligen Rechteinhaber.</p>
-    </footer>
-  </div>
-
-  <div id="collectionDetailBackdrop" class="collection-detail-backdrop hidden" aria-hidden="true"></div>
-  <aside id="collectionDetailSheet" class="collection-detail-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="collectionDetailTitle" aria-hidden="true">
-    <div class="collection-detail-header">
-      <div>
-        <p>SAMMLUNGSDATENSATZ · <span id="detailCollectionName">SAMMLUNG</span></p>
-        <h2 id="collectionDetailTitle">Kartendetails</h2>
-        <span id="collectionDetailMeta">Set · Kartennummer</span>
-      </div>
-      <button id="closeCollectionDetailButton" class="collection-detail-close" type="button" aria-label="Kartendetails schließen">×</button>
-    </div>
-
-    <div class="collection-detail-content">
-      <section class="collection-detail-visual" aria-label="Kartenabbildung und Marktdaten">
-        <img id="collectionDetailImage" src="icons/card-placeholder.svg" alt="Pokémon-Karte">
-        <p id="detailImageStatus" class="collection-detail-status" role="status">Kartendaten werden geladen …</p>
-        <button id="retryCardImageButton" class="mini-system-button hidden" type="button">Kartenbild erneut suchen</button>
-        <div id="detailPriceSummary" class="detail-price-summary hidden" aria-label="Cardmarket-Preise"></div>
-        <a id="detailCardmarketLink" class="cardmarket-button collection-cardmarket-link" href="https://www.cardmarket.com/de/Pokemon/Products/Search" target="_blank" rel="noopener noreferrer">Auf Cardmarket suchen</a>
-      </section>
-
-      <form id="collectionDetailForm" class="collection-detail-form" autocomplete="off" onsubmit="return false;">
-        <div class="collection-detail-section">
-          <div class="collection-detail-section-title"><span>01</span><strong>SAMMLUNGSANGABEN</strong></div>
-          <div class="collection-detail-grid">
-            <label>
+<div aria-hidden="true" class="collection-detail-backdrop hidden" id="collectionDetailBackdrop"></div>
+<aside aria-hidden="true" aria-labelledby="collectionDetailTitle" aria-modal="true" class="collection-detail-sheet hidden" id="collectionDetailSheet" role="dialog">
+<div class="collection-detail-header">
+<div>
+<p>SAMMLUNGSDATENSATZ · <span id="detailCollectionName">SAMMLUNG</span></p>
+<h2 id="collectionDetailTitle">Kartendetails</h2>
+<span id="collectionDetailMeta">Set · Kartennummer</span>
+</div>
+<button aria-label="Kartendetails schließen" class="collection-detail-close" id="closeCollectionDetailButton" type="button">×</button>
+</div>
+<div class="collection-detail-content">
+<section aria-label="Kartenabbildung und Marktdaten" class="collection-detail-visual">
+<img alt="Pokémon-Karte" id="collectionDetailImage" src="icons/card-placeholder.svg"/>
+<p class="collection-detail-status" id="detailImageStatus" role="status">Kartendaten werden geladen …</p>
+<button class="mini-system-button hidden" id="retryCardImageButton" type="button">Kartenbild erneut suchen</button>
+<div aria-label="Cardmarket-Preise" class="detail-price-summary hidden" id="detailPriceSummary"></div>
+<a class="cardmarket-button collection-cardmarket-link" href="https://www.cardmarket.com/de/Pokemon/Products/Search" id="detailCardmarketLink" rel="noopener noreferrer" target="_blank">Auf Cardmarket suchen</a>
+</section>
+<form autocomplete="off" class="collection-detail-form" id="collectionDetailForm" onsubmit="return false;">
+<div class="collection-detail-section">
+<div class="collection-detail-section-title"><span>01</span><strong>SAMMLUNGSANGABEN</strong></div>
+<div class="collection-detail-grid">
+<label>
               Kartensprache
               <select id="detailLanguage"></select>
-            </label>
-            <label>
+</label>
+<label>
               Variante
               <select id="detailVariant"></select>
-            </label>
-            <label>
+</label>
+<label>
               Zustand
               <select id="detailCondition"></select>
-            </label>
-            <label>
-              <span id="detailQuantityLabel">Anzahl</span>
-              <span class="detail-quantity-control">
-                <button id="detailQuantityMinus" type="button" aria-label="Anzahl verringern">−</button>
-                <input id="detailQuantity" type="number" min="1" step="1" inputmode="numeric" value="1">
-                <button id="detailQuantityPlus" type="button" aria-label="Anzahl erhöhen">+</button>
-              </span>
-            </label>
-            <label id="detailPurchasePriceField">
+</label>
+<label>
+<span id="detailQuantityLabel">Anzahl</span>
+<span class="detail-quantity-control">
+<button aria-label="Anzahl verringern" id="detailQuantityMinus" type="button">−</button>
+<input id="detailQuantity" inputmode="numeric" min="1" step="1" type="number" value="1"/>
+<button aria-label="Anzahl erhöhen" id="detailQuantityPlus" type="button">+</button>
+</span>
+</label>
+<label id="detailPurchasePriceField">
               Kaufpreis in Euro
-              <input id="detailPurchasePrice" type="text" inputmode="decimal" placeholder="z. B. 12,50">
-            </label>
-            <label id="detailPurchaseDateField">
+              <input id="detailPurchasePrice" inputmode="decimal" placeholder="z. B. 12,50" type="text"/>
+</label>
+<label id="detailPurchaseDateField">
               Kaufdatum
-              <input id="detailPurchaseDate" type="date">
-            </label>
-            <label id="detailPriorityField" class="wishlist-detail-field hidden">
+              <input id="detailPurchaseDate" type="date"/>
+</label>
+<label class="wishlist-detail-field hidden" id="detailPriorityField">
               Priorität
               <select id="detailPriority">
-                <option value="high">Hoch</option>
-                <option value="medium" selected>Mittel</option>
-                <option value="low">Niedrig</option>
-              </select>
-            </label>
-            <label id="detailTargetPriceField" class="wishlist-detail-field hidden">
+<option value="high">Hoch</option>
+<option selected="" value="medium">Mittel</option>
+<option value="low">Niedrig</option>
+</select>
+</label>
+<label class="wishlist-detail-field hidden" id="detailTargetPriceField">
               Zielpreis in Euro
-              <input id="detailTargetPrice" type="text" inputmode="decimal" placeholder="z. B. 25,00">
-            </label>
-            <label class="collection-detail-notes">
+              <input id="detailTargetPrice" inputmode="decimal" placeholder="z. B. 25,00" type="text"/>
+</label>
+<label class="collection-detail-notes">
               Notizen
-              <textarea id="detailNotes" rows="4" maxlength="1000" placeholder="Eigene Angaben zur Karte …"></textarea>
-            </label>
-          </div>
-        </div>
-
-        <div class="collection-detail-section">
-          <div class="collection-detail-section-title"><span>02</span><strong>KARTENDATEN</strong></div>
-          <dl class="collection-card-data">
-            <div><dt>Seltenheit</dt><dd id="detailRarity">Nicht angegeben</dd></div>
-            <div><dt>Illustrator</dt><dd id="detailIllustrator">Nicht angegeben</dd></div>
-            <div><dt>Kategorie</dt><dd id="detailCategory">Nicht angegeben</dd></div>
-            <div><dt>Datenbank-ID</dt><dd id="detailCardId">–</dd></div>
-          </dl>
-        </div>
-
-        <div class="collection-detail-actions">
-          <button id="saveCollectionDetailButton" class="primary-button" type="button">Änderungen speichern</button>
-          <button id="cancelCollectionDetailButton" class="secondary-button" type="button">Abbrechen</button>
-          <button id="deleteCollectionEntryButton" class="mini-system-button danger-button" type="button">Karte aus Sammlung löschen</button>
-        </div>
-      </form>
-    </div>
-  </aside>
-
-  <div id="settingsBackdrop" class="settings-backdrop" aria-hidden="true"></div>
-  <aside id="settingsDrawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
-    <div class="settings-hardware-top" aria-hidden="true">
-      <div class="settings-lens"></div>
-      <div class="settings-led-strip"><i></i><i></i><i></i></div>
-      <div class="settings-speaker"></div>
-    </div>
-
-    <div class="settings-topbar">
-      <button id="closeSettingsButton" class="drawer-back-button" type="button" aria-label="Einstellungen schließen"><span aria-hidden="true">‹</span></button>
-      <div>
-        <p>SYSTEMMENÜ</p>
-        <h2 id="settingsTitle">Einstellungen</h2>
-      </div>
-      <span class="drawer-online"><i class="status-light state-green"></i> ONLINE</span>
-    </div>
-
-    <div class="settings-scroll">
-      <section class="settings-section">
-        <div class="settings-section-title"><span>01</span><h3>Allgemein</h3></div>
-
-        <label class="setting-row" for="settingsLanguage">
-          <span><strong>Kartensprache</strong><small>Standard für Scanner und Suche</small></span>
-          <select id="settingsLanguage">
-            <option value="de">Deutsch</option>
-            <option value="en">Englisch</option>
-          </select>
-        </label>
-
-        <label class="setting-row" for="resultCountSetting">
-          <span><strong>Angezeigte Treffer</strong><small>Anzahl der Ergebniskarten</small></span>
-          <select id="resultCountSetting">
-            <option value="3">3</option>
-            <option value="5">5</option>
-            <option value="8">8</option>
-          </select>
-        </label>
-
-        <label class="setting-row toggle-row" for="bootAnimationToggle">
-          <span><strong>Startanimation</strong><small>Pokédex-Systemstart anzeigen</small></span>
-          <span class="retro-toggle"><input id="bootAnimationToggle" type="checkbox" /><i></i></span>
-        </label>
-      </section>
-
-      <section class="settings-section">
-        <div class="settings-section-title"><span>02</span><h3>Kamera & Scanner</h3></div>
-
-        <label class="setting-row toggle-row" for="rememberCameraToggle">
-          <span><strong>Kamerawahl merken</strong><small>Zuletzt verwendete Rückkamera wiederverwenden</small></span>
-          <span class="retro-toggle"><input id="rememberCameraToggle" type="checkbox" /><i></i></span>
-        </label>
-
-        <label class="setting-row toggle-row" for="sleeveModeToggle">
-          <span><strong>Schutzhüllen-Modus</strong><small>Zusätzlicher Ausschnitt für Sleeve und Toploader</small></span>
-          <span class="retro-toggle"><input id="sleeveModeToggle" type="checkbox" /><i></i></span>
-        </label>
-
-        <div class="setting-row setting-info-row">
-          <span><strong>Bevorzugte Kamera</strong><small id="preferredCameraText">Automatische Rückkamera</small></span>
-          <button id="forgetCameraButton" class="mini-system-button" type="button">Zurücksetzen</button>
-        </div>
-
-        <div class="system-note">
-          <i class="status-light state-amber"></i>
-          <p>Der Kamera-Umschalter erscheint im Live-Scanner, sobald das Gerät mehrere auswählbare Rückkameras bereitstellt.</p>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <div class="settings-section-title"><span>03</span><h3>Erkennung</h3></div>
-
-        <div class="system-module-list" aria-label="Aktive Erkennungsmodule">
-          <div><span><i class="status-light state-green"></i> Automatischer Modus</span><strong>AKTIV</strong></div>
-          <div><span><i class="status-light state-green"></i> Vintage & Galerie</span><strong>AKTIV</strong></div>
-          <div><span><i class="status-light state-green"></i> Lokale OCR-Rückfallebene</span><strong>AKTIV</strong></div>
-          <div><span><i class="status-light state-green"></i> Bildvergleich</span><strong>AKTIV</strong></div>
-          <div><span><i class="status-light state-green"></i> Library Engine</span><strong>AKTIV</strong></div>
-          <div><span><i class="status-light state-green"></i> Scannerhistorie</span><strong>LOKAL</strong></div>
-          <div><span><i class="status-light state-green"></i> Collection Organizer</span><strong>AKTIV</strong></div>
-        </div>
-
-        <label class="setting-row toggle-row" for="debugToggle">
-          <span><strong>Diagnosemodus</strong><small>Erkennungsdetails nach einem Scan anzeigen</small></span>
-          <span class="retro-toggle"><input id="debugToggle" type="checkbox" /><i></i></span>
-        </label>
-      </section>
-
-      <section id="aiPanel" class="settings-section ai-panel">
-        <div class="settings-section-title"><span>04</span><h3>KI-Verbindung</h3></div>
-        <div class="settings-ai-status">
-          <span class="summary-status"><i id="aiSummaryLed" class="status-light state-off"></i> <span id="aiSummaryText">Nicht verbunden</span></span>
-        </div>
-        <div class="ai-content drawer-ai-content">
-          <p>Die KI liest Kartenname, Nummer und Set. Die lokale Erkennung bleibt als Rückfallebene aktiv.</p>
-          <div class="form-grid">
-            <label>
+              <textarea id="detailNotes" maxlength="1000" placeholder="Eigene Angaben zur Karte …" rows="4"></textarea>
+</label>
+</div>
+</div>
+<div class="collection-detail-section">
+<div class="collection-detail-section-title"><span>02</span><strong>KARTENDATEN</strong></div>
+<dl class="collection-card-data">
+<div><dt>Seltenheit</dt><dd id="detailRarity">Nicht angegeben</dd></div>
+<div><dt>Illustrator</dt><dd id="detailIllustrator">Nicht angegeben</dd></div>
+<div><dt>Kategorie</dt><dd id="detailCategory">Nicht angegeben</dd></div>
+<div><dt>Datenbank-ID</dt><dd id="detailCardId">–</dd></div>
+</dl>
+</div>
+<div class="collection-detail-actions">
+<button class="primary-button" id="saveCollectionDetailButton" type="button">Änderungen speichern</button>
+<button class="secondary-button" id="cancelCollectionDetailButton" type="button">Abbrechen</button>
+<button class="mini-system-button danger-button" id="deleteCollectionEntryButton" type="button">Karte aus Sammlung löschen</button>
+</div>
+</form>
+</div>
+</aside>
+<div aria-hidden="true" class="settings-backdrop" id="settingsBackdrop"></div>
+<aside aria-hidden="true" aria-labelledby="settingsTitle" aria-modal="true" class="settings-drawer" id="settingsDrawer" role="dialog">
+<div aria-hidden="true" class="settings-hardware-top">
+<div class="settings-lens"></div>
+<div class="settings-led-strip"><i></i><i></i><i></i></div>
+<div class="settings-speaker"></div>
+</div>
+<div class="settings-topbar">
+<button aria-label="Einstellungen schließen" class="drawer-back-button" id="closeSettingsButton" type="button"><span aria-hidden="true">‹</span></button>
+<div>
+<p>SYSTEMMENÜ</p>
+<h2 id="settingsTitle">Einstellungen</h2>
+</div>
+<span class="drawer-online"><i class="status-light state-green"></i> ONLINE</span>
+</div>
+<div class="settings-scroll">
+<section class="settings-section">
+<div class="settings-section-title"><span>01</span><h3>Allgemein</h3></div>
+<label class="setting-row" for="settingsLanguage">
+<span><strong>Kartensprache</strong><small>Standard für Scanner und Suche</small></span>
+<select id="settingsLanguage">
+<option value="de">Deutsch</option>
+<option value="en">Englisch</option>
+</select>
+</label>
+<label class="setting-row" for="resultCountSetting">
+<span><strong>Angezeigte Treffer</strong><small>Anzahl der Ergebniskarten</small></span>
+<select id="resultCountSetting">
+<option value="3">3</option>
+<option value="5">5</option>
+<option value="8">8</option>
+</select>
+</label>
+<label class="setting-row toggle-row" for="bootAnimationToggle">
+<span><strong>Startanimation</strong><small>Pokédex-Systemstart anzeigen</small></span>
+<span class="retro-toggle"><input id="bootAnimationToggle" type="checkbox"><i></i></input></span>
+</label>
+</section>
+<section class="settings-section">
+<div class="settings-section-title"><span>02</span><h3>Kamera &amp; Scanner</h3></div>
+<label class="setting-row toggle-row" for="rememberCameraToggle">
+<span><strong>Kamerawahl merken</strong><small>Zuletzt verwendete Rückkamera wiederverwenden</small></span>
+<span class="retro-toggle"><input id="rememberCameraToggle" type="checkbox"><i></i></input></span>
+</label>
+<label class="setting-row toggle-row" for="sleeveModeToggle">
+<span><strong>Schutzhüllen-Modus</strong><small>Zusätzlicher Ausschnitt für Sleeve und Toploader</small></span>
+<span class="retro-toggle"><input id="sleeveModeToggle" type="checkbox"><i></i></input></span>
+</label>
+<div class="setting-row setting-info-row">
+<span><strong>Bevorzugte Kamera</strong><small id="preferredCameraText">Automatische Rückkamera</small></span>
+<button class="mini-system-button" id="forgetCameraButton" type="button">Zurücksetzen</button>
+</div>
+<div class="system-note">
+<i class="status-light state-amber"></i>
+<p>Der Kamera-Umschalter erscheint im Live-Scanner, sobald das Gerät mehrere auswählbare Rückkameras bereitstellt.</p>
+</div>
+</section>
+<section class="settings-section">
+<div class="settings-section-title"><span>03</span><h3>Erkennung</h3></div>
+<div aria-label="Aktive Erkennungsmodule" class="system-module-list">
+<div><span><i class="status-light state-green"></i> Automatischer Modus</span><strong>AKTIV</strong></div>
+<div><span><i class="status-light state-green"></i> Vintage &amp; Galerie</span><strong>AKTIV</strong></div>
+<div><span><i class="status-light state-green"></i> Lokale OCR-Rückfallebene</span><strong>AKTIV</strong></div>
+<div><span><i class="status-light state-green"></i> Bildvergleich</span><strong>AKTIV</strong></div>
+<div><span><i class="status-light state-green"></i> Library Engine</span><strong>AKTIV</strong></div>
+<div><span><i class="status-light state-green"></i> Scannerhistorie</span><strong>LOKAL</strong></div>
+<div><span><i class="status-light state-green"></i> Collection Organizer</span><strong>AKTIV</strong></div>
+</div>
+<label class="setting-row toggle-row" for="debugToggle">
+<span><strong>Diagnosemodus</strong><small>Erkennungsdetails nach einem Scan anzeigen</small></span>
+<span class="retro-toggle"><input id="debugToggle" type="checkbox"><i></i></input></span>
+</label>
+</section>
+<section class="settings-section ai-panel" id="aiPanel">
+<div class="settings-section-title"><span>04</span><h3>KI-Verbindung</h3></div>
+<div class="settings-ai-status">
+<span class="summary-status"><i class="status-light state-off" id="aiSummaryLed"></i> <span id="aiSummaryText">Nicht verbunden</span></span>
+</div>
+<div class="ai-content drawer-ai-content">
+<p>Die KI liest Kartenname, Nummer und Set. Die lokale Erkennung bleibt als Rückfallebene aktiv.</p>
+<div class="form-grid">
+<label>
               Worker-Adresse
-              <input id="aiEndpoint" type="url" inputmode="url" autocomplete="off" placeholder="https://carddex-ai….workers.dev" />
-            </label>
-            <label>
+              <input autocomplete="off" id="aiEndpoint" inputmode="url" placeholder="https://carddex-ai….workers.dev" type="url">
+</input></label>
+<label>
               Privater Schlüssel
-              <input id="aiSecret" type="password" autocomplete="off" placeholder="SCANNER_KEY" />
-            </label>
-          </div>
-          <button id="saveAiSettingsButton" class="secondary-button wide-button" type="button">Verbindung speichern & testen</button>
-          <p id="aiStatus" class="ai-status muted">Verbindung wird geprüft.</p>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
-
-        <div class="system-info-grid">
-          <div><span>APP</span><strong id="settingsAppVersion">v6.15.1</strong></div>
-          <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
-          <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
-          <div><span>SPEICHER</span><strong>lokal</strong></div>
-        </div>
-
-        <div class="maintenance-actions">
-          <button id="clearCacheButton" class="mini-system-button wide-button" type="button">App-Cache leeren</button>
-          <button id="resetSettingsButton" class="mini-system-button danger-button wide-button" type="button">App-Einstellungen zurücksetzen</button>
-        </div>
-        <p id="maintenanceStatus" class="maintenance-status" aria-live="polite"></p>
-      </section>
-
-      <section id="debugPanel" class="settings-section debug-panel hidden">
-        <div class="settings-section-title"><span>06</span><h3>Erkennungsdetails</h3></div>
-        <pre id="ocrText">Noch keine Erkennung ausgeführt.</pre>
-      </section>
-    </div>
-
-    <div class="settings-bottom-controls" aria-hidden="true">
-      <span class="drawer-dpad"></span>
-      <span class="drawer-button red"></span>
-      <span class="drawer-button dark"></span>
-    </div>
-  </aside>
-
-  <div id="scannerModal" class="scanner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="scannerTitle">
-    <div class="scanner-topbar">
-      <button id="closeScannerButton" class="scanner-text-button" type="button">Abbrechen</button>
-      <div class="scanner-title-group">
-        <strong id="scannerTitle">Karte ausrichten</strong>
-        <span id="activeCameraLabel">Rückkamera</span>
-      </div>
-      <button id="switchCameraButton" class="camera-switch-button hidden" type="button" aria-label="Zur nächsten Kamera wechseln">
-        <span aria-hidden="true">↻</span>
-        <small>Kamera</small>
-      </button>
-    </div>
-    <div id="cameraViewport" class="camera-viewport">
-      <video id="cameraVideo" playsinline muted></video>
-      <div id="scannerGuide" class="scanner-guide" aria-hidden="true">
-        <span class="corner corner-tl"></span>
-        <span class="corner corner-tr"></span>
-        <span class="corner corner-br"></span>
-        <span class="corner corner-bl"></span>
-        <div class="guide-scan-line"></div>
-      </div>
-      <div class="camera-shade shade-top"></div>
-      <div class="camera-shade shade-bottom"></div>
-      <div class="camera-shade shade-left"></div>
-      <div class="camera-shade shade-right"></div>
-      <div id="cameraModeBadge" class="camera-mode-badge hidden">SCHUTZHÜLLE</div>
-    </div>
-    <div class="scanner-controls">
-      <p id="cameraStatus">Karte vollständig in den Rahmen legen.</p>
-      <button id="captureButton" class="capture-button" type="button" aria-label="Foto aufnehmen"><span></span></button>
-    </div>
-  </div>
-
-  <canvas id="sourceCanvas" hidden></canvas>
-  <canvas id="cardCanvas" hidden></canvas>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=6151" defer></script>
-  <script src="collection.js?v=6151" defer></script>
-  <script src="library-engine.js?v=6151" defer></script>
-  <script src="set-engine.js?v=6151" defer></script>
-  <script src="insights-engine.js?v=6151" defer></script>
-  <script src="set-ui.js?v=6151" defer></script>
-  <script src="insights-ui.js?v=6151" defer></script>
-  <script src="library-ui.js?v=6151" defer></script>
-  <script src="app.js?v=6151" defer></script>
-  <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
+              <input autocomplete="off" id="aiSecret" placeholder="SCANNER_KEY" type="password">
+</input></label>
+</div>
+<button class="secondary-button wide-button" id="saveAiSettingsButton" type="button">Verbindung speichern &amp; testen</button>
+<p class="ai-status muted" id="aiStatus">Verbindung wird geprüft.</p>
+</div>
+</section>
+<section class="settings-section">
+<div class="settings-section-title"><span>05</span><h3>System &amp; Wartung</h3></div>
+<div class="system-info-grid">
+<div><span>APP</span><strong id="settingsAppVersion">v7.0</strong></div>
+<div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
+<div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
+<div><span>SPEICHER</span><strong>lokal</strong></div>
+</div>
+<div class="maintenance-actions">
+<button class="mini-system-button wide-button" id="clearCacheButton" type="button">App-Cache leeren</button>
+<button class="mini-system-button danger-button wide-button" id="resetSettingsButton" type="button">App-Einstellungen zurücksetzen</button>
+</div>
+<p aria-live="polite" class="maintenance-status" id="maintenanceStatus"></p>
+</section>
+<section class="settings-section debug-panel hidden" id="debugPanel">
+<div class="settings-section-title"><span>06</span><h3>Erkennungsdetails</h3></div>
+<pre id="ocrText">Noch keine Erkennung ausgeführt.</pre>
+</section>
+</div>
+<div aria-hidden="true" class="settings-bottom-controls">
+<span class="drawer-dpad"></span>
+<span class="drawer-button red"></span>
+<span class="drawer-button dark"></span>
+</div>
+</aside>
+<div aria-labelledby="scannerTitle" aria-modal="true" class="scanner-modal hidden" id="scannerModal" role="dialog">
+<div aria-hidden="true" class="evolution-scanner-header">
+<div class="evolution-scanner-lens"><i></i></div>
+<div class="evolution-scanner-header-copy"><span>OPTICAL SCANNER</span><strong id="scannerTitle">Karte ausrichten</strong><small id="activeCameraLabel">Rückkamera</small></div>
+<div class="evolution-focus-status"><i class="status-light state-amber pulse" id="scannerFocusLed"></i><span id="scannerFocusText">KAMERA STARTET</span></div>
+</div>
+<div class="camera-viewport" id="cameraViewport">
+<video id="cameraVideo" muted="" playsinline=""></video>
+<div aria-hidden="true" class="scanner-guide" id="scannerGuide">
+<span class="corner corner-tl"></span><span class="corner corner-tr"></span><span class="corner corner-br"></span><span class="corner corner-bl"></span>
+<div class="guide-scan-line"></div>
+</div>
+<div class="camera-shade shade-top"></div><div class="camera-shade shade-bottom"></div><div class="camera-shade shade-left"></div><div class="camera-shade shade-right"></div>
+<div class="camera-mode-badge hidden" id="cameraModeBadge">SCHUTZHÜLLE</div>
+</div>
+<div class="evolution-scanner-control-deck">
+<p id="cameraStatus">Karte vollständig in den Rahmen legen.</p>
+<div class="evolution-scanner-controls">
+<button aria-label="Scanner schließen" class="evolution-hardware-button back" id="closeScannerButton" type="button"><span></span><small>ZURÜCK</small></button>
+<button aria-label="Zur nächsten Kamera wechseln" class="evolution-hardware-button camera hidden" id="switchCameraButton" type="button"><span></span><small>KAMERA</small></button>
+<button aria-label="Foto aufnehmen" class="capture-button evolution-capture-button" id="captureButton" type="button"><span></span><small>AUSLÖSER</small></button>
+</div>
+<div aria-hidden="true" class="evolution-control-leds"><i></i><i></i><i></i></div>
+</div>
+</div>
+<canvas hidden="" id="sourceCanvas"></canvas>
+<canvas hidden="" id="cardCanvas"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
+<script defer="" src="carddex-core.js?v=7000"></script>
+<script defer="" src="collection.js?v=7000"></script>
+<script defer="" src="library-engine.js?v=7000"></script>
+<script defer="" src="set-engine.js?v=7000"></script>
+<script defer="" src="insights-engine.js?v=7000"></script>
+<script defer="" src="set-ui.js?v=7000"></script>
+<script defer="" src="insights-ui.js?v=7000"></script>
+<script defer="" src="library-ui.js?v=7000"></script>
+<script defer="True" src="evolution-ui.js?v=7000"></script><script defer="" src="app.js?v=7000"></script>
+<div aria-live="polite" class="collection-toast" id="collectionToast" role="status"></div>
 </body>
 </html>
