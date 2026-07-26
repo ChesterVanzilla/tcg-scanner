@@ -3711,7 +3711,7 @@ body.result-picker-open {
 }
 
 /* ============================================================
-   CardDex AI v6.12 – SETDEX
+   CardDex AI v6.13 – MASTERSET
    Set-Fortschritt, fehlende Karten und Dubletten
    ============================================================ */
 
@@ -4392,4 +4392,109 @@ body.result-picker-open {
 
 @media (max-width: 340px) {
   .app-navigation { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* ============================================================
+   CardDex AI v6.13 – MASTERSET / SET-PROJEKTE
+   ============================================================ */
+
+.set-overview-card {
+  position: relative;
+}
+
+.set-overview-card.project {
+  border-color: #8d6e28;
+  box-shadow: inset 0 0 0 1px rgba(224,177,66,.24), 0 7px 0 #080a08;
+}
+
+.set-project-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #5f665f;
+  border-radius: 50%;
+  color: #aab2aa;
+  background: #171c18;
+  box-shadow: 0 3px 0 #080a08;
+  font: 900 1.05rem/1 monospace;
+  cursor: pointer;
+}
+
+.set-project-toggle.active,
+.set-project-detail-button.active {
+  border-color: #d3a93e;
+  color: #fff1b2;
+  background: #6a5017;
+}
+
+.set-overview-card .set-overview-heading {
+  padding-right: 34px;
+}
+
+.set-detail-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.set-project-actions {
+  display: grid;
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: 14px 0;
+  padding: 13px;
+  border: 1px solid #4b5047;
+  border-radius: 11px;
+  background: linear-gradient(135deg, rgba(214,170,58,.09), transparent 52%), #0d110e;
+}
+
+.set-project-actions .secondary-button {
+  min-height: 44px;
+  margin: 0;
+}
+
+.set-project-actions .secondary-button:disabled {
+  opacity: .62;
+  cursor: default;
+}
+
+.set-project-actions p {
+  margin: 0;
+  color: #9ba69d;
+  font: 650 .68rem/1.45 monospace;
+}
+
+@media (max-width: 620px) {
+  .set-detail-topbar {
+    align-items: flex-start;
+  }
+
+  .set-detail-topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .set-project-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .set-detail-topbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .set-detail-topbar-actions {
+    grid-template-columns: 1fr 1fr;
+  }
 }

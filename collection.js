@@ -496,7 +496,8 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: window.CardDexCore?.version || "6.12",
+      appVersion: window.CardDexCore?.version || "6.13",
+      setProjects: window.CardDexSetEngine?.getSetProjects?.() || [],
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,
@@ -545,6 +546,7 @@
     localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId);
     await ensureDefaultCollection();
     await ensureWishlistCollection();
+    if (Array.isArray(backup.setProjects)) window.CardDexSetEngine?.replaceSetProjects?.(backup.setProjects);
     await refreshAll();
     toast("Sicherung wurde vollständig wiederhergestellt.");
   }
@@ -1658,6 +1660,70 @@
     return addCard(card, { ...options, collectionId: WISHLIST_COLLECTION_ID });
   }
 
+
+  async function addCardsToWishlist(cards, options = {}) {
+    const input = Array.isArray(cards) ? cards.filter(Boolean) : [];
+    if (!input.length) return { added: 0, skipped: 0 };
+
+    const existingEntries = await getEntries(WISHLIST_COLLECTION_ID);
+    const existingIds = new Set(existingEntries.map(entry => entry.id));
+    const collection = await getCollection(WISHLIST_COLLECTION_ID);
+    const db = await openDatabase();
+    const tx = db.transaction(["cards", "entries", "collections"], "readwrite");
+    const done = transactionDone(tx);
+    const cardStore = tx.objectStore("cards");
+    const entryStore = tx.objectStore("entries");
+    const now = new Date().toISOString();
+    const seen = new Set();
+    let added = 0;
+    let skipped = 0;
+
+    for (const card of input) {
+      const normalized = normalizeCard(card);
+      if (!normalized.id || seen.has(normalized.id)) {
+        skipped += 1;
+        continue;
+      }
+      seen.add(normalized.id);
+      const language = options.language || card._dataLanguage || card.dataLanguage || "de";
+      const variant = options.variant || inferDefaultVariant(card);
+      const entryId = buildEntryId(WISHLIST_COLLECTION_ID, normalized.id, language, variant);
+      if (existingIds.has(entryId)) {
+        skipped += 1;
+        continue;
+      }
+
+      cardStore.put(normalized);
+      entryStore.put({
+        id: entryId,
+        collectionId: WISHLIST_COLLECTION_ID,
+        cardId: normalized.id,
+        quantity: Math.max(1, Math.round(Number(options.quantity || 1))),
+        language,
+        variant,
+        condition: "NM",
+        purchasePrice: null,
+        purchaseDate: "",
+        notes: "",
+        priority: normalizePriority(options.priority || "medium"),
+        targetPrice: parseLocalizedNumber(options.targetPrice) ?? null,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: "local"
+      });
+      existingIds.add(entryId);
+      added += 1;
+    }
+
+    if (collection && added) tx.objectStore("collections").put({ ...collection, updatedAt: now });
+    await done;
+    if (added) await refreshAll();
+    toast(added
+      ? `${added} ${added === 1 ? "Karte wurde" : "Karten wurden"} zur Wunschliste hinzugefügt.`
+      : "Alle ausgewählten Karten stehen bereits auf der Wunschliste.");
+    return { added, skipped };
+  }
+
   function buildEntryId(collectionId, cardId, language, variant) {
     return `${collectionId}::${cardId}::${language || "de"}::${variant || "normal"}`;
   }
@@ -1745,6 +1811,7 @@
     init,
     addCard,
     addToWishlist,
+    addCardsToWishlist,
     openWishlist,
     getWishlistId: () => WISHLIST_COLLECTION_ID,
     refresh: refreshAll,

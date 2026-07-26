@@ -3,7 +3,7 @@
 const API_BASE = "https://api.tcgdex.net/v2";
 const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
 const OPENCV_URL = "https://docs.opencv.org/4.x/opencv.js";
-const APP_VERSION = window.CardDexCore?.version || "6.12";
+const APP_VERSION = window.CardDexCore?.version || "6.13";
 const POKEMON_TCG_API = "https://api.pokemontcg.io/v2";
 const AI_ENDPOINT_KEY = "cardscan-ai-endpoint";
 const AI_SECRET_KEY = "cardscan-ai-secret";
@@ -327,7 +327,7 @@ function updateDebugPanelVisibility(hasNewData = false) {
 function applyAppVersionLabels() {
   if (els.bootLine1) els.bootLine1.textContent = `CARDEX SYSTEM v${APP_VERSION}`;
   const footerVersion = document.querySelector("#footerVersionText");
-  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · SETDEX`;
+  if (footerVersion) footerVersion.textContent = `PERSONAL CARD ASSISTANT · v${APP_VERSION} · MASTERSET`;
   const settingsVersion = document.querySelector("#settingsAppVersion");
   if (settingsVersion) settingsVersion.textContent = `v${APP_VERSION}`;
 }

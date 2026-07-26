@@ -85,6 +85,58 @@
     return true;
   }
 
+  function projectLabel(isProject) {
+    return isProject ? "★ SET-PROJEKT" : "☆ PROJEKT";
+  }
+
+  async function toggleProject(setId, button = null) {
+    const active = window.CardDexSetEngine?.toggleSetProject?.(setId);
+    if (button) {
+      button.classList.toggle("active", Boolean(active));
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+      button.textContent = button.classList.contains("set-project-toggle")
+        ? (active ? "★" : "☆")
+        : projectLabel(active);
+      if (button.classList.contains("set-project-toggle") && button.dataset.setName) {
+        button.setAttribute("aria-label", active
+          ? `${button.dataset.setName} nicht mehr als Set-Projekt führen`
+          : `${button.dataset.setName} als Set-Projekt merken`);
+      }
+    }
+    if (currentDetail?.set?.id === String(setId || "").toLowerCase()) {
+      currentDetail.set.project = Boolean(active);
+      updateProjectDetailButton(currentDetail.set);
+    }
+  }
+
+  function updateProjectDetailButton(set) {
+    const button = $("#setDetailProjectButton");
+    if (!button) return;
+    const active = Boolean(set?.project ?? window.CardDexSetEngine?.isSetProject?.(set?.id));
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    button.textContent = active ? "★ Set-Projekt" : "☆ Als Projekt merken";
+  }
+
+  function missingWishlistCandidates(result) {
+    return (result?.cards || []).filter(card => !card.ownedQuantity && !card.unlisted && !card.wishlistQuantity);
+  }
+
+  function updateBulkWishlistAction(result) {
+    const button = $("#addMissingSetToWishlistButton");
+    const status = $("#setProjectActionStatus");
+    if (!button || !status) return;
+    const candidates = missingWishlistCandidates(result);
+    button.disabled = !candidates.length;
+    button.textContent = candidates.length
+      ? `${formatCount(candidates.length)} fehlende ${candidates.length === 1 ? "Karte" : "Karten"} zur Wunschliste`
+      : "Alle fehlenden Karten vorgemerkt";
+    status.textContent = result?.set?.missing
+      ? `${formatCount(result.set.missing)} Karten fehlen insgesamt. Bereits vorgemerkte Karten werden nicht doppelt angelegt.`
+      : "Dieses Set ist vollständig – es gibt keine fehlenden Karten mehr.";
+  }
+
+
   function sortOverviewSets(sets) {
     const collator = new Intl.Collator("de", { numeric: true, sensitivity: "base" });
     return [...sets].sort((a, b) => {
@@ -97,10 +149,24 @@
   }
 
   function createSetCard(set) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `set-overview-card${set.complete ? " complete" : ""}`;
-    button.dataset.setId = set.id;
+    const article = document.createElement("article");
+    article.className = `set-overview-card${set.complete ? " complete" : ""}${set.project ? " project" : ""}`;
+    article.dataset.setId = set.id;
+    article.tabIndex = 0;
+    article.setAttribute("role", "button");
+    article.setAttribute("aria-label", `${set.name} öffnen`);
+
+    const project = document.createElement("button");
+    project.type = "button";
+    project.className = `set-project-toggle${set.project ? " active" : ""}`;
+    project.setAttribute("aria-pressed", set.project ? "true" : "false");
+    project.dataset.setName = set.name;
+    project.setAttribute("aria-label", set.project ? `${set.name} nicht mehr als Set-Projekt führen` : `${set.name} als Set-Projekt merken`);
+    project.textContent = set.project ? "★" : "☆";
+    project.addEventListener("click", event => {
+      event.stopPropagation();
+      void toggleProject(set.id, project);
+    });
 
     const visual = document.createElement("span");
     visual.className = "set-overview-visual";
@@ -141,13 +207,23 @@
     status.className = set.complete ? "set-complete-badge" : "set-progress-badge";
     status.textContent = set.complete ? "✓ VOLLSTÄNDIG" : `${set.progress} %`;
     const wishlist = document.createElement("span");
-    wishlist.textContent = set.wishlistCount ? `★ ${formatCount(set.wishlistCount)} Wunschliste` : "Details öffnen";
+    wishlist.textContent = set.project
+      ? "★ SET-PROJEKT"
+      : set.wishlistCount
+        ? `★ ${formatCount(set.wishlistCount)} Wunschliste`
+        : "Details öffnen";
     footer.append(status, wishlist);
 
     body.append(heading, stats, progress, footer);
-    button.append(visual, body);
-    button.addEventListener("click", () => openSet(set.id));
-    return button;
+    article.append(project, visual, body);
+    article.addEventListener("click", () => openSet(set.id));
+    article.addEventListener("keydown", event => {
+      if (event.target.closest?.(".set-project-toggle")) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openSet(set.id);
+    });
+    return article;
   }
 
   async function renderOverview(options = {}) {
@@ -160,7 +236,7 @@
 
     try {
       const result = await window.CardDexSetEngine.getSetOverview({
-        includeAll: overviewMode === "all",
+        includeAll: overviewMode === "all" || overviewMode === "projects",
         language: "de",
         force: Boolean(options.force)
       });
@@ -172,7 +248,11 @@
       setText("#setDuplicateCopiesCount", result.stats.duplicateCopies);
 
       const query = normalizeText(overviewSearch);
-      let sets = result.sets.filter(set => overviewMode === "all" || set.ownedUnique > 0);
+      let sets = result.sets.filter(set => {
+        if (overviewMode === "all") return true;
+        if (overviewMode === "projects") return set.project;
+        return set.ownedUnique > 0;
+      });
       sets = sets.filter(matchesOverviewFilter);
       if (query) {
         sets = sets.filter(set => normalizeText(`${set.name} ${set.id} ${set.serie?.name || ""}`).includes(query));
@@ -182,7 +262,8 @@
       const summary = $("#setOverviewSummary");
       if (summary) {
         const sourceText = result.stale ? " · Offline-Daten" : "";
-        summary.textContent = `${formatCount(sets.length)} Sets angezeigt${sourceText}`;
+        const projectText = overviewMode === "projects" && result.stats.projects ? ` · ${formatCount(result.stats.projects)} Projekte` : "";
+        summary.textContent = `${formatCount(sets.length)} Sets angezeigt${projectText}${sourceText}`;
       }
 
       const status = $("#setOverviewStatus");
@@ -194,7 +275,9 @@
           status.textContent = "Offline-Modus: Es werden zuletzt gespeicherte Set-Daten verwendet.";
           status.classList.add("warning");
         } else {
-          status.textContent = "Fortschritt basiert auf allen bekannten Karten eines Sets, einschließlich Secret Rares.";
+          status.textContent = overviewMode === "projects"
+            ? `${formatCount(result.stats.projectMissing)} Karten fehlen noch in deinen Set-Projekten · ${formatCount(result.stats.projectWishlist)} davon stehen auf der Wunschliste.`
+            : "Fortschritt basiert auf allen bekannten Karten eines Sets, einschließlich Secret Rares.";
           status.classList.remove("warning");
         }
       }
@@ -202,10 +285,12 @@
       list.innerHTML = "";
       if (!sets.length) {
         list.append(createEmpty(
-          overviewMode === "owned" ? "NOCH KEIN SET GESTARTET" : "KEINE PASSENDEN SETS",
+          overviewMode === "owned" ? "NOCH KEIN SET GESTARTET" : overviewMode === "projects" ? "NOCH KEIN SET-PROJEKT" : "KEINE PASSENDEN SETS",
           overviewMode === "owned"
             ? "Sobald du eine Karte zu deiner Sammlung hinzufügst, erscheint das zugehörige Set hier automatisch."
-            : "Passe Suche oder Filter an."
+            : overviewMode === "projects"
+              ? "Markiere ein Set mit dem Stern, um es hier als persönliches Sammelprojekt zu verfolgen."
+              : "Passe Suche oder Filter an."
         ));
         return;
       }
@@ -353,6 +438,8 @@
     const bar = $("#setDetailProgressBar");
     if (bar) bar.style.width = `${set.progress}%`;
     $("#setDetailPanel")?.classList.toggle("complete", set.complete);
+    updateProjectDetailButton(set);
+    updateBulkWishlistAction(result);
   }
 
   async function renderDetail(options = {}) {
@@ -428,7 +515,7 @@
 
   function wireOverviewControls() {
     $("#setOverviewMode")?.addEventListener("change", event => {
-      overviewMode = event.target.value === "all" ? "all" : "owned";
+      overviewMode = ["owned", "projects", "all"].includes(event.target.value) ? event.target.value : "owned";
       void renderOverview();
     });
     $("#setOverviewSort")?.addEventListener("change", event => {
@@ -457,6 +544,29 @@
   function wireDetailControls() {
     $("#backToSetOverviewButton")?.addEventListener("click", closeSetDetail);
     $("#refreshSetDetailButton")?.addEventListener("click", () => void renderDetail({ force: true }));
+    $("#setDetailProjectButton")?.addEventListener("click", () => {
+      if (!selectedSetId) return;
+      void toggleProject(selectedSetId, $("#setDetailProjectButton"));
+    });
+    $("#addMissingSetToWishlistButton")?.addEventListener("click", async () => {
+      if (!currentDetail) return;
+      const candidates = missingWishlistCandidates(currentDetail);
+      if (!candidates.length) return;
+      const label = candidates.length === 1 ? "diese fehlende Karte" : `diese ${candidates.length} fehlenden Karten`;
+      if (!confirm(`Möchtest du ${label} aus „${currentDetail.set.name}“ zur Wunschliste hinzufügen?`)) return;
+      const button = $("#addMissingSetToWishlistButton");
+      button.disabled = true;
+      button.textContent = "Wunschliste wird ergänzt …";
+      try {
+        const cards = candidates.map(card => window.CardDexSetEngine.createWishlistCard(currentDetail.set, card));
+        await window.CardDexCollections?.addCardsToWishlist?.(cards, { language: currentDetail.set.language || "de" });
+        await renderDetail();
+      } catch (error) {
+        console.error(error);
+        button.disabled = false;
+        button.textContent = "Fehler – erneut versuchen";
+      }
+    });
     $("#setDetailSearchInput")?.addEventListener("input", event => {
       detailSearch = event.target.value || "";
       void renderDetail();
@@ -484,6 +594,11 @@
     updateOverviewChipState();
     updateDetailChipState();
     window.CardDexCore?.on?.("collection-changed", () => {
+      if (window.CardDexLibrary?.getActiveView?.() !== "sets") return;
+      if (selectedSetId) void renderDetail();
+      else void renderOverview();
+    });
+    window.CardDexCore?.on?.("set-projects-changed", () => {
       if (window.CardDexLibrary?.getActiveView?.() !== "sets") return;
       if (selectedSetId) void renderDetail();
       else void renderOverview();

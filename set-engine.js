@@ -5,7 +5,8 @@
   const DB_VERSION = 2;
   const API_BASE = "https://api.tcgdex.net/v2";
   const CATALOG_CACHE_KEY = "carddex-v612-set-catalog";
-  const DETAIL_CACHE_KEY = "carddex-v612-set-details";
+  const DETAIL_CACHE_KEY = "carddex-v613-set-details";
+  const PROJECTS_KEY = "carddex-v613-set-projects";
   const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
   const DETAIL_MAX_AGE = 14 * 24 * 60 * 60 * 1000;
   const DETAIL_CACHE_LIMIT = 8;
@@ -84,6 +85,39 @@
     } catch (error) {
       console.warn("Set-Cache konnte nicht gespeichert werden:", error);
     }
+  }
+
+
+  function getSetProjects() {
+    const stored = readLocalCache(PROJECTS_KEY, []);
+    if (!Array.isArray(stored)) return [];
+    return [...new Set(stored.map(normalizeSetId).filter(Boolean))];
+  }
+
+  function replaceSetProjects(setIds = []) {
+    const normalized = [...new Set((Array.isArray(setIds) ? setIds : []).map(normalizeSetId).filter(Boolean))];
+    writeLocalCache(PROJECTS_KEY, normalized);
+    window.CardDexCore?.emit?.("set-projects-changed", { setIds: normalized });
+    return normalized;
+  }
+
+  function isSetProject(setId) {
+    const clean = normalizeSetId(setId);
+    return Boolean(clean && getSetProjects().includes(clean));
+  }
+
+  function setSetProject(setId, enabled = true) {
+    const clean = normalizeSetId(setId);
+    if (!clean) return false;
+    const projects = new Set(getSetProjects());
+    if (enabled) projects.add(clean);
+    else projects.delete(clean);
+    replaceSetProjects([...projects]);
+    return projects.has(clean);
+  }
+
+  function toggleSetProject(setId) {
+    return setSetProject(setId, !isSetProject(setId));
   }
 
   function normalizeSetId(value) {
@@ -364,7 +398,8 @@
       total,
       missing,
       progress,
-      complete: Boolean(total && ownedUnique >= total)
+      complete: Boolean(total && ownedUnique >= total),
+      project: isSetProject(setId)
     };
   }
 
@@ -405,7 +440,10 @@
         started: started.length,
         complete: started.filter(set => set.complete).length,
         missing: started.reduce((sum, set) => sum + set.missing, 0),
-        duplicateCopies: started.reduce((sum, set) => sum + set.duplicateCopies, 0)
+        duplicateCopies: started.reduce((sum, set) => sum + set.duplicateCopies, 0),
+        projects: sets.filter(set => set.project).length,
+        projectMissing: sets.filter(set => set.project).reduce((sum, set) => sum + set.missing, 0),
+        projectWishlist: sets.filter(set => set.project).reduce((sum, set) => sum + set.wishlistCount, 0)
       }
     };
   }
@@ -512,7 +550,7 @@
 
   async function init() {
     await openDatabase();
-    window.CardDexCore?.emit?.("sets-ready", { version: window.CardDexCore?.version || "6.12" });
+    window.CardDexCore?.emit?.("sets-ready", { version: window.CardDexCore?.version || "6.13" });
   }
 
   window.CardDexSetEngine = Object.freeze({
@@ -523,6 +561,11 @@
     getSetProgress,
     getCollectionSnapshot,
     createWishlistCard,
+    getSetProjects,
+    replaceSetProjects,
+    isSetProject,
+    setSetProject,
+    toggleSetProject,
     normalizeSetId,
     normalizeLocalId,
     cardKey,
