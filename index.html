@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=614" />
+  <link rel="stylesheet" href="styles.css?v=615" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.14</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.15</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -79,6 +79,7 @@
       <button id="showScannerView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SCAN</button>
       <button id="showCollectionView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SAMMLUNG</button>
       <button id="showSetsView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">SETS</button>
+      <button id="showInsightsView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">INSIGHTS</button>
       <button id="showHistoryView" class="app-nav-button" type="button" role="tab" aria-selected="false" tabindex="-1">VERLAUF</button>
     </nav>
 
@@ -86,7 +87,7 @@
       <div id="dashboardView">
         <section class="panel dashboard-hero-panel">
           <div class="section-heading">
-            <div class="step-badge">613</div>
+            <div class="step-badge">615</div>
             <div>
               <p class="panel-kicker">LIBRARY-MODUS</p>
               <h2>Dein CardDex auf einen Blick</h2>
@@ -119,6 +120,7 @@
             <button class="secondary-button" type="button" data-carddex-view="collection">Sammlung öffnen</button>
             <button id="dashboardOpenWishlist" class="secondary-button wishlist-quick-button" type="button">Wunschliste öffnen</button>
             <button class="secondary-button set-quick-button" type="button" data-carddex-view="sets">Set-Fortschritt</button>
+            <button class="secondary-button insights-quick-button" type="button" data-carddex-view="insights">Insights öffnen</button>
             <button class="secondary-button" type="button" data-carddex-view="history">Scannerhistorie</button>
           </div>
         </section>
@@ -137,6 +139,101 @@
             <button class="mini-system-button" type="button" data-carddex-view="collection">Verwalten</button>
           </div>
           <div id="dashboardCollections" class="dashboard-collection-list"></div>
+        </section>
+      </div>
+
+
+      <div id="insightsView" class="hidden">
+        <section class="panel insights-hero-panel">
+          <div class="section-heading insights-heading">
+            <div class="step-badge">615</div>
+            <div>
+              <p class="panel-kicker">INSIGHTS-MODUS</p>
+              <h2>Deine Sammlung in Zahlen</h2>
+              <p>Bestand, Dubletten, Set-Projekte und Scanneraktivität werden aus deiner lokalen CardDex-Datenbank ausgewertet.</p>
+            </div>
+            <button id="refreshInsightsButton" class="mini-system-button" type="button">Aktualisieren</button>
+          </div>
+          <p id="insightsDataStatus" class="insights-data-status" aria-live="polite">Lokale Daten werden ausgewertet …</p>
+
+          <div class="insights-primary-stats" aria-label="Zentrale Sammlungsstatistik">
+            <article><span>EXEMPLARE</span><strong id="insightsTotalCopies">0</strong><small>gesamter Bestand</small></article>
+            <article><span>VERSCHIEDENE</span><strong id="insightsUniqueCards">0</strong><small>eindeutige Karten</small></article>
+            <article class="action-card"><span>DUBLETTEN</span><strong id="insightsDuplicateCopies">0</strong><small>zusätzliche Exemplare</small><button id="insightsOpenDuplicates" type="button">Anzeigen</button></article>
+            <article class="action-card"><span>TAUSCH</span><strong id="insightsTradeCopies">0</strong><small>markierte Exemplare</small><button id="insightsOpenTrade" type="button">Anzeigen</button></article>
+            <article><span>WUNSCHLISTE</span><strong id="insightsWishlistCards">0</strong><small>verschiedene Karten</small></article>
+            <article><span>ERFASSTER EINKAUF</span><strong id="insightsPurchaseInvestment">0,00 €</strong><small>aktueller Bestand</small></article>
+          </div>
+        </section>
+
+        <section class="panel insights-panel">
+          <div class="dashboard-section-heading">
+            <div><p class="panel-kicker">BESTAND</p><h2>Sammlungsstruktur</h2></div>
+            <button class="mini-system-button" type="button" data-carddex-view="collection">Sammlungen öffnen</button>
+          </div>
+          <div class="insights-secondary-stats">
+            <div><span>VARIANTEN</span><strong id="insightsUniqueVariants">0</strong></div>
+            <div><span>VERKAUFT</span><strong id="insightsSoldCopies">0</strong></div>
+            <div><span>GETAUSCHT</span><strong id="insightsTradedCopies">0</strong></div>
+            <div><span>WUNSCH-ZIELBUDGET</span><strong id="insightsWishlistBudget">0,00 €</strong></div>
+          </div>
+          <div id="insightsCollectionBreakdown" class="insights-progress-list"></div>
+        </section>
+
+        <section class="insights-two-column">
+          <div class="panel insights-panel">
+            <div class="dashboard-section-heading"><div><p class="panel-kicker">KARTENSPRACHEN</p><h2>Sprachen</h2></div></div>
+            <div id="insightsLanguageBreakdown" class="insights-progress-list compact"></div>
+          </div>
+          <div class="panel insights-panel">
+            <div class="dashboard-section-heading"><div><p class="panel-kicker">AUSFÜHRUNGEN</p><h2>Varianten</h2></div></div>
+            <div id="insightsVariantBreakdown" class="insights-progress-list compact"></div>
+          </div>
+        </section>
+
+        <section class="panel insights-panel">
+          <div class="dashboard-section-heading">
+            <div><p class="panel-kicker">SETDEX</p><h2>Stärkste Sets</h2></div>
+            <button class="mini-system-button" type="button" data-carddex-view="sets">Alle Sets</button>
+          </div>
+          <div id="insightsTopSets" class="insights-progress-list"></div>
+        </section>
+
+        <section class="panel insights-panel">
+          <div class="dashboard-section-heading">
+            <div><p class="panel-kicker">MASTER SETS</p><h2>Set-Projekte</h2></div>
+            <button class="mini-system-button" type="button" data-carddex-view="sets">Projekte verwalten</button>
+          </div>
+          <div class="insights-project-stats">
+            <div><span>AKTIV</span><strong id="insightsProjectCount">0</strong></div>
+            <div><span>FERTIG</span><strong id="insightsCompletedProjects">0</strong></div>
+            <div><span>FEHLEND</span><strong id="insightsProjectMissing">0</strong></div>
+            <div><span>Ø FORTSCHRITT</span><strong id="insightsAverageProjectProgress">0 %</strong></div>
+          </div>
+          <div id="insightsProjectList" class="insights-progress-list"></div>
+        </section>
+
+        <section class="panel insights-panel">
+          <div class="dashboard-section-heading">
+            <div><p class="panel-kicker">SCANNER</p><h2>Aktivität der letzten 7 Tage</h2></div>
+            <button class="mini-system-button" type="button" data-carddex-view="history">Verlauf öffnen</button>
+          </div>
+          <div class="insights-activity-summary">
+            <div><span>7 TAGE</span><strong id="insightsScans7">0</strong></div>
+            <div><span>30 TAGE</span><strong id="insightsScans30">0</strong></div>
+            <div><span>ERFOLGSQUOTE 30 TAGE</span><strong id="insightsVerification30">0 %</strong></div>
+          </div>
+          <div id="insightsActivityChart" class="insights-activity-chart" aria-label="Scanneraktivität der letzten sieben Tage"></div>
+        </section>
+
+        <section class="panel insights-panel">
+          <div class="dashboard-section-heading"><div><p class="panel-kicker">DATENPFLEGE</p><h2>Offene Hinweise</h2></div></div>
+          <div class="insights-quality-grid">
+            <article class="insights-quality-card"><span>VORLÄUFIG</span><strong id="insightsProvisionalCards">0</strong><small>Karten noch nicht vollständig bestätigt</small></article>
+            <article class="insights-quality-card"><span>MANUELL PRÜFEN</span><strong id="insightsReviewCards">0</strong><small>Karten mit Prüfstatus</small></article>
+            <article class="insights-quality-card"><span>OHNE BILD</span><strong id="insightsMissingImages">0</strong><small>Kartendatensätze ohne Bildquelle</small></article>
+            <article class="insights-quality-card"><span>OHNE KAUFPREIS</span><strong id="insightsUnpricedEntries">0</strong><small>Sammlungseinträge ohne Preisangabe</small></article>
+          </div>
         </section>
       </div>
 
@@ -305,6 +402,7 @@
             <div class="collection-quick-filters" role="group" aria-label="Schnellfilter">
               <button class="collection-filter-chip active" type="button" data-collection-filter="all">ALLE</button>
               <button class="collection-filter-chip collection-only-control" type="button" data-collection-filter="duplicates">DOPPELTE</button>
+              <button class="collection-filter-chip collection-only-control" type="button" data-collection-filter="trade">TAUSCH</button>
               <button class="collection-filter-chip" type="button" data-collection-filter="provisional">VORLÄUFIG</button>
               <button class="collection-filter-chip" type="button" data-collection-filter="review">PRÜFEN</button>
               <button class="collection-filter-chip" type="button" data-collection-filter="notes">MIT NOTIZ</button>
@@ -323,6 +421,7 @@
                   <option value="review">Manuell prüfen</option>
                   <option value="notes">Mit Notizen</option>
                   <option value="purchase" data-collection-only>Mit Kaufpreis</option>
+                  <option value="trade" data-collection-only>Für Tausch markiert</option>
                   <option value="priority-high" data-wishlist-only>Hohe Priorität</option>
                   <option value="target-price" data-wishlist-only>Mit Zielpreis</option>
                 </select>
@@ -560,7 +659,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.14 · COMPLETION</span>
+        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.15 · INSIGHTS</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -774,7 +873,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong id="settingsAppVersion">v6.14</strong></div>
+          <div><span>APP</span><strong id="settingsAppVersion">v6.15</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -836,13 +935,15 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=614" defer></script>
-  <script src="collection.js?v=614" defer></script>
-  <script src="library-engine.js?v=614" defer></script>
-  <script src="set-engine.js?v=614" defer></script>
-  <script src="library-ui.js?v=614" defer></script>
-  <script src="set-ui.js?v=614" defer></script>
-  <script src="app.js?v=614" defer></script>
+  <script src="carddex-core.js?v=615" defer></script>
+  <script src="collection.js?v=615" defer></script>
+  <script src="library-engine.js?v=615" defer></script>
+  <script src="set-engine.js?v=615" defer></script>
+  <script src="insights-engine.js?v=615" defer></script>
+  <script src="set-ui.js?v=615" defer></script>
+  <script src="insights-ui.js?v=615" defer></script>
+  <script src="library-ui.js?v=615" defer></script>
+  <script src="app.js?v=615" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

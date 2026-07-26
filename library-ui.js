@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const VIEW_IDS = ["dashboard", "scanner", "collection", "sets", "history"];
+  const VIEW_IDS = ["dashboard", "scanner", "collection", "sets", "insights", "history"];
   const STATUS_LABELS = {
     verified: "VERIFIZIERT",
     provisional: "VORLÄUFIG",
@@ -29,6 +29,7 @@
     if (next === "collection") window.CardDexCollections?.refresh?.();
     if (next === "dashboard") void renderDashboard();
     if (next === "sets") window.CardDexSetsUI?.activate?.();
+    if (next === "insights") window.CardDexInsightsUI?.activate?.();
     if (next === "history") void renderHistory();
 
     if (!options.keepScroll) window.scrollTo({ top: 0, behavior: options.instant ? "auto" : "smooth" });
@@ -407,11 +408,22 @@
       wireNavigation();
       wireHistoryControls();
       await window.CardDexSetsUI?.init?.();
+      await window.CardDexInsightsUI?.init?.();
       window.CardDexCore?.on?.("history-changed", () => {
         if (activeView === "history") void renderHistory();
+        if (activeView === "insights") void window.CardDexInsightsUI?.render?.();
         void renderDashboard();
       });
-      window.CardDexCore?.on?.("collection-changed", () => void renderDashboard());
+      window.CardDexCore?.on?.("collection-changed", () => {
+        if (activeView === "insights") void window.CardDexInsightsUI?.render?.();
+        void renderDashboard();
+      });
+      window.CardDexCore?.on?.("set-projects-changed", () => {
+        if (activeView === "insights") void window.CardDexInsightsUI?.render?.();
+      });
+      window.CardDexCore?.on?.("set-project-settings-changed", () => {
+        if (activeView === "insights") void window.CardDexInsightsUI?.render?.();
+      });
       switchView("dashboard", { instant: true });
       await renderDashboard();
     } catch (error) {

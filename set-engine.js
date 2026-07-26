@@ -1007,7 +1007,7 @@
 
   async function init() {
     await openDatabase();
-    window.CardDexCore?.emit?.("sets-ready", { version: window.CardDexCore?.version || "6.14" });
+    window.CardDexCore?.emit?.("sets-ready", { version: window.CardDexCore?.version || "6.15" });
   }
 
   window.CardDexSetEngine = Object.freeze({

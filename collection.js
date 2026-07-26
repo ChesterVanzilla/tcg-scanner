@@ -12,7 +12,7 @@
   const CARD_DATA_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   const CARDMARKET_LINK_MIGRATION_KEY = "carddex-v685-cardmarket-link-migration";
   const COLLECTION_VIEW_KEY = "carddex-v611-collection-view";
-  const COLLECTION_FILTER_VALUES = new Set(["all", "duplicates", "single", "verified", "provisional", "review", "notes", "purchase", "priority-high", "target-price"]);
+  const COLLECTION_FILTER_VALUES = new Set(["all", "duplicates", "single", "verified", "provisional", "review", "notes", "purchase", "trade", "priority-high", "target-price"]);
   const COLLECTION_SORT_VALUES = new Set(["name-asc", "name-desc", "set-number", "quantity-desc", "newest", "purchase-desc", "priority-desc", "target-price-desc"]);
   const collectionCollator = new Intl.Collator("de", { sensitivity: "base", numeric: true });
 
@@ -547,7 +547,7 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: window.CardDexCore?.version || "6.14",
+      appVersion: window.CardDexCore?.version || "6.15",
       setProjects: window.CardDexSetEngine?.getSetProjects?.() || [],
       setProjectSettings: window.CardDexSetEngine?.getAllProjectSettings?.() || {},
       backupVersion: BACKUP_VERSION,
@@ -713,6 +713,7 @@
       case "review": return status === "review";
       case "notes": return Boolean(String(entry.notes || "").trim());
       case "purchase": return entry.purchasePrice !== null && entry.purchasePrice !== "" && Number.isFinite(Number(entry.purchasePrice));
+      case "trade": return Math.max(0, Number(entry.tradeQuantity || 0)) > 0;
       case "priority-high": return normalizePriority(entry.priority) === "high";
       case "target-price": return entry.targetPrice !== null && entry.targetPrice !== "" && Number.isFinite(Number(entry.targetPrice));
       default: return true;
@@ -832,7 +833,7 @@
     document.querySelectorAll("[data-collection-only]").forEach(option => { option.hidden = isWishlist; option.disabled = isWishlist; });
     document.querySelectorAll(".wishlist-only-control").forEach(control => control.classList.toggle("hidden", !isWishlist));
     document.querySelectorAll(".collection-only-control").forEach(control => control.classList.toggle("hidden", isWishlist));
-    const filterAllowed = isWishlist ? !["duplicates", "single", "purchase"].includes(collectionViewState.filter) : !["priority-high", "target-price"].includes(collectionViewState.filter);
+    const filterAllowed = isWishlist ? !["duplicates", "single", "purchase", "trade"].includes(collectionViewState.filter) : !["priority-high", "target-price"].includes(collectionViewState.filter);
     if (!filterAllowed) collectionViewState.filter = "all";
     const sortAllowed = isWishlist ? collectionViewState.sort !== "purchase-desc" : !["priority-desc", "target-price-desc"].includes(collectionViewState.sort);
     if (!sortAllowed) collectionViewState.sort = "name-asc";
