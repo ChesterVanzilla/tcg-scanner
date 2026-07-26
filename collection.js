@@ -8,7 +8,7 @@
   const DEFAULT_COLLECTION_ID = "default-collection";
   const WISHLIST_COLLECTION_ID = "wishlist";
   const ACTIVE_COLLECTION_KEY = "carddex-v67-active-collection";
-  const BACKUP_VERSION = 4;
+  const BACKUP_VERSION = 5;
   const CARD_DATA_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   const CARDMARKET_LINK_MIGRATION_KEY = "carddex-v685-cardmarket-link-migration";
   const COLLECTION_VIEW_KEY = "carddex-v611-collection-view";
@@ -334,10 +334,18 @@
       notes: existing?.notes || "",
       priority: isWishlist ? normalizePriority(options.priority || existing?.priority || "medium") : (existing?.priority || ""),
       targetPrice: isWishlist ? (parseLocalizedNumber(options.targetPrice ?? existing?.targetPrice) ?? null) : (existing?.targetPrice ?? null),
+      tradeQuantity: isWishlist ? 0 : Math.max(0, Number(existing?.tradeQuantity || 0)),
+      soldQuantity: isWishlist ? 0 : Math.max(0, Number(existing?.soldQuantity || 0)),
+      tradedAwayQuantity: isWishlist ? 0 : Math.max(0, Number(existing?.tradedAwayQuantity || 0)),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
       syncStatus: "local"
     });
+    // Wird genau dieselbe Sprach-/Variantenkombination gekauft oder gescannt,
+    // verschwindet sie automatisch von der Wunschliste. Andere Varianten bleiben erhalten.
+    if (!isWishlist) {
+      entryStore.delete(buildEntryId(WISHLIST_COLLECTION_ID, normalized.id, language, variant));
+    }
     const collectionStore = tx.objectStore("collections");
     if (collection) collectionStore.put({ ...collection, updatedAt: now });
     await done;
@@ -357,7 +365,16 @@
     const done = transactionDone(tx);
     const store = tx.objectStore("entries");
     if (quantity <= 0) store.delete(entryId);
-    else store.put({ ...entry, quantity: Math.max(1, Math.round(Number(quantity) || 1)), updatedAt: new Date().toISOString(), syncStatus: "local" });
+    else {
+      const nextQuantity = Math.max(1, Math.round(Number(quantity) || 1));
+      store.put({
+        ...entry,
+        quantity: nextQuantity,
+        tradeQuantity: Math.min(nextQuantity, Math.max(0, Number(entry.tradeQuantity || 0))),
+        updatedAt: new Date().toISOString(),
+        syncStatus: "local"
+      });
+    }
     await done;
     if (!options.skipRefresh) await refreshAll();
   }
@@ -384,6 +401,13 @@
       getCollection(current.collectionId)
     ]);
     const { card: _card, collection: _collection, ...currentRaw } = current;
+    const mergedQuantity = collision ? Number(collision.quantity || 0) + quantity : quantity;
+    const mergedTradeQuantity = isWishlist ? 0 : Math.min(
+      mergedQuantity,
+      Math.max(0, Number(currentRaw.tradeQuantity || 0)) + Math.max(0, Number(collision?.tradeQuantity || 0))
+    );
+    const mergedSoldQuantity = isWishlist ? 0 : Math.max(0, Number(currentRaw.soldQuantity || 0)) + Math.max(0, Number(collision?.soldQuantity || 0));
+    const mergedTradedAwayQuantity = isWishlist ? 0 : Math.max(0, Number(currentRaw.tradedAwayQuantity || 0)) + Math.max(0, Number(collision?.tradedAwayQuantity || 0));
     const db = await openDatabase();
     const tx = db.transaction(["entries", "collections"], "readwrite");
     const done = transactionDone(tx);
@@ -396,7 +420,7 @@
       id: nextEntryId,
       collectionId: current.collectionId,
       cardId: current.cardId,
-      quantity: collision ? Number(collision.quantity || 0) + quantity : quantity,
+      quantity: mergedQuantity,
       language,
       variant,
       condition,
@@ -405,6 +429,9 @@
       notes,
       priority,
       targetPrice,
+      tradeQuantity: mergedTradeQuantity,
+      soldQuantity: mergedSoldQuantity,
+      tradedAwayQuantity: mergedTradedAwayQuantity,
       createdAt: collision?.createdAt || current.createdAt || now,
       updatedAt: now,
       syncStatus: "local"
@@ -432,6 +459,28 @@
     await refreshAll();
     toast(current.collection?.type === "wishlist" ? "Karte wurde von der Wunschliste entfernt." : "Karte wurde aus der Sammlung entfernt.");
     return true;
+  }
+
+  async function removeWishlistEntries(entryIds = [], options = {}) {
+    const ids = [...new Set((Array.isArray(entryIds) ? entryIds : []).map(value => String(value || "").trim()).filter(Boolean))];
+    if (!ids.length) return 0;
+    const records = await Promise.all(ids.map(getRawEntry));
+    const wishlistIds = records
+      .filter(entry => entry?.collectionId === WISHLIST_COLLECTION_ID)
+      .map(entry => entry.id);
+    if (!wishlistIds.length) return 0;
+
+    const db = await openDatabase();
+    const tx = db.transaction(["entries", "collections"], "readwrite");
+    const done = transactionDone(tx);
+    const store = tx.objectStore("entries");
+    wishlistIds.forEach(id => store.delete(id));
+    const collection = await requestToPromise(tx.objectStore("collections").get(WISHLIST_COLLECTION_ID));
+    if (collection) tx.objectStore("collections").put({ ...collection, updatedAt: new Date().toISOString() });
+    await done;
+    if (!options.skipRefresh) await refreshAll();
+    if (!options.silent) toast(`${wishlistIds.length} ${wishlistIds.length === 1 ? "Eintrag wurde" : "Einträge wurden"} von der Wunschliste entfernt.`);
+    return wishlistIds.length;
   }
 
   async function createCollection(name, type = "collection") {
@@ -498,8 +547,9 @@
     await done;
     const backup = {
       app: "CardDex AI",
-      appVersion: window.CardDexCore?.version || "6.13.1",
+      appVersion: window.CardDexCore?.version || "6.14",
       setProjects: window.CardDexSetEngine?.getSetProjects?.() || [],
+      setProjectSettings: window.CardDexSetEngine?.getAllProjectSettings?.() || {},
       backupVersion: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       activeCollectionId,
@@ -540,6 +590,9 @@
       notes: "",
       priority: "",
       targetPrice: null,
+      tradeQuantity: 0,
+      soldQuantity: 0,
+      tradedAwayQuantity: 0,
       ...item
     }));
     (backup.scanHistory || []).forEach(item => tx.objectStore("scanHistory").put(item));
@@ -549,6 +602,9 @@
     await ensureDefaultCollection();
     await ensureWishlistCollection();
     if (Array.isArray(backup.setProjects)) window.CardDexSetEngine?.replaceSetProjects?.(backup.setProjects);
+    if (backup.setProjectSettings && typeof backup.setProjectSettings === "object") {
+      window.CardDexSetEngine?.replaceAllProjectSettings?.(backup.setProjectSettings);
+    }
     await refreshAll();
     toast("Sicherung wurde vollständig wiederhergestellt.");
   }
@@ -1808,6 +1864,11 @@
     getActiveCollectionId: () => activeCollectionId,
     getCollections,
     getEntries,
+    getEntry,
+    setQuantity,
+    updateEntryDetails,
+    deleteEntry,
+    removeWishlistEntries,
     populateSelect: renderCollectionSelectors,
     switchView,
     openEntryDetail,

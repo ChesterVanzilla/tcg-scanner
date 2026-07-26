@@ -1,12 +1,12 @@
 "use strict";
 
 (() => {
-  const VERSION = "6.13.1";
+  const VERSION = "6.14";
   const EVENT_PREFIX = "carddex:";
   const CARDMARKET_SEARCH = "https://www.cardmarket.com/de/Pokemon/Products/Search";
   const CARDMARKET_PRODUCT = "https://www.cardmarket.com/de/Pokemon/Products";
   const TCGDEX_API_BASE = "https://api.tcgdex.net/v2";
-  const PRODUCT_CACHE_KEY = "carddex-v6131-cardmarket-products";
+  const PRODUCT_CACHE_KEY = "carddex-v614-cardmarket-products";
   const PRODUCT_CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 
   const KNOWN_CARDMARKET_SET_CODES = Object.freeze({

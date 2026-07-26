@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=6131" />
+  <link rel="stylesheet" href="styles.css?v=614" />
   <script>
     try {
       if (localStorage.getItem("carddex-v66-boot-animation") === "0") {
@@ -32,7 +32,7 @@
         <img src="icons/icon-192.png" alt="" />
         <p class="boot-title">CARDEX AI</p>
         <div class="boot-log" aria-hidden="true">
-          <span id="bootLine1">CARDEX SYSTEM v6.13.1</span>
+          <span id="bootLine1">CARDEX SYSTEM v6.14</span>
           <span id="bootLine2">INITIALIZING MODULES…</span>
           <span id="bootLine3">CAMERA: CHECKING</span>
           <span id="bootLine4">AI LINK: CHECKING</span>
@@ -436,7 +436,10 @@
         <section id="setDetailPanel" class="panel set-detail-panel hidden">
           <div class="set-detail-topbar">
             <button id="backToSetOverviewButton" class="mini-system-button" type="button">‹ Alle Sets</button>
-            <button id="refreshSetDetailButton" class="mini-system-button" type="button">Aktualisieren</button>
+            <div class="set-detail-topbar-actions">
+              <button id="setDetailProjectButton" class="mini-system-button set-project-detail-button" type="button" aria-pressed="false">☆ Als Projekt merken</button>
+              <button id="refreshSetDetailButton" class="mini-system-button" type="button">Aktualisieren</button>
+            </div>
           </div>
 
           <div class="set-detail-hero">
@@ -451,12 +454,25 @@
           </div>
 
           <div class="set-detail-progress-console">
+            <div class="set-project-goal-row">
+              <label for="setProjectGoalSelect">
+                <span>SAMMELZIEL</span>
+                <select id="setProjectGoalSelect">
+                  <option value="numbers">Jede Kartennummer einmal</option>
+                  <option value="normal-reverse">Normal/Holo + Reverse</option>
+                  <option value="master">Alle bekannten Varianten</option>
+                </select>
+              </label>
+              <p id="setProjectGoalHint">Fortschritt wird nach jeder Kartennummer berechnet.</p>
+            </div>
             <div class="set-detail-progress-heading">
-              <span><strong id="setDetailOwnedCount">0</strong> / <b id="setDetailTotalCount">0</b> Karten</span>
+              <span><strong id="setDetailOwnedCount">0</strong> / <b id="setDetailTotalCount">0</b> <span id="setDetailProgressUnit">Karten</span></span>
               <strong id="setDetailPercent">0 %</strong>
             </div>
             <div class="set-detail-progress-track"><i id="setDetailProgressBar"></i></div>
             <div class="set-detail-mini-stats">
+              <div><span>REGULÄR</span><strong id="setDetailRegularCount">0 / 0</strong></div>
+              <div><span>SECRET</span><strong id="setDetailSecretCount">0 / 0</strong></div>
               <div><span>FEHLEND</span><strong id="setDetailMissingCount">0</strong></div>
               <div><span>DOPPELT</span><strong id="setDetailDuplicateCount">0</strong></div>
               <div><span>WUNSCHLISTE</span><strong id="setDetailWishlistCount">0</strong></div>
@@ -468,6 +484,16 @@
             <p id="setProjectActionStatus">Du kannst fehlende Karten gesammelt als Set-Projekt vormerken.</p>
           </div>
 
+          <div id="setSelectionToolbar" class="set-selection-toolbar hidden" aria-live="polite">
+            <strong><span id="setSelectionCount">0</span> ausgewählt</strong>
+            <div>
+              <button id="selectVisibleSetCardsButton" class="mini-system-button" type="button">Sichtbare auswählen</button>
+              <button id="addSelectedSetCardsToWishlistButton" class="mini-system-button" type="button">Zur Wunschliste</button>
+              <button id="removeSelectedSetCardsFromWishlistButton" class="mini-system-button" type="button">Von Wunschliste</button>
+              <button id="clearSetSelectionButton" class="mini-system-button" type="button">Auswahl leeren</button>
+            </div>
+          </div>
+
           <section class="set-detail-browser" aria-label="Karten im Set filtern">
             <div class="set-search-row">
               <label for="setDetailSearchInput">
@@ -477,6 +503,7 @@
                   <button id="clearSetDetailSearchButton" type="button" aria-label="Kartensuche löschen">×</button>
                 </span>
               </label>
+              <button id="toggleSetSelectionButton" class="mini-system-button" type="button" aria-pressed="false">Auswahl</button>
             </div>
             <div class="set-filter-chips" role="group" aria-label="Kartenfilter">
               <button class="set-filter-chip active" type="button" data-set-detail-filter="all">ALLE</button>
@@ -484,6 +511,7 @@
               <button class="set-filter-chip" type="button" data-set-detail-filter="missing">FEHLEND</button>
               <button class="set-filter-chip" type="button" data-set-detail-filter="duplicates">DOPPELT</button>
               <button class="set-filter-chip" type="button" data-set-detail-filter="wishlist">WUNSCHLISTE</button>
+              <button class="set-filter-chip" type="button" data-set-detail-filter="trade">TAUSCH</button>
             </div>
             <div class="set-browser-summary">
               <p id="setDetailFilterSummary">Karten werden geladen.</p>
@@ -532,7 +560,7 @@
     <footer>
       <div class="footer-brand">
         <strong>CARDEX AI</strong>
-        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.13.1 · MASTERSET BUGFIX</span>
+        <span id="footerVersionText">PERSONAL CARD ASSISTANT · v6.14 · COMPLETION</span>
       </div>
       <div class="footer-leds" aria-hidden="true">
         <span>POWER <i id="footerPowerLed" class="status-light state-amber pulse"></i></span>
@@ -746,7 +774,7 @@
         <div class="settings-section-title"><span>05</span><h3>System & Wartung</h3></div>
 
         <div class="system-info-grid">
-          <div><span>APP</span><strong id="settingsAppVersion">v6.13.1</strong></div>
+          <div><span>APP</span><strong id="settingsAppVersion">v6.14</strong></div>
           <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
           <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
           <div><span>SPEICHER</span><strong>lokal</strong></div>
@@ -808,13 +836,13 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="cardCanvas" hidden></canvas>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-  <script src="carddex-core.js?v=6131" defer></script>
-  <script src="collection.js?v=6131" defer></script>
-  <script src="library-engine.js?v=6131" defer></script>
-  <script src="set-engine.js?v=6131" defer></script>
-  <script src="library-ui.js?v=6131" defer></script>
-  <script src="set-ui.js?v=6131" defer></script>
-  <script src="app.js?v=6131" defer></script>
+  <script src="carddex-core.js?v=614" defer></script>
+  <script src="collection.js?v=614" defer></script>
+  <script src="library-engine.js?v=614" defer></script>
+  <script src="set-engine.js?v=614" defer></script>
+  <script src="library-ui.js?v=614" defer></script>
+  <script src="set-ui.js?v=614" defer></script>
+  <script src="app.js?v=614" defer></script>
   <div id="collectionToast" class="collection-toast" role="status" aria-live="polite"></div>
 </body>
 </html>

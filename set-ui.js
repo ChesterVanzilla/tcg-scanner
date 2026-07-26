@@ -12,6 +12,10 @@
   let overviewToken = 0;
   let detailToken = 0;
   let currentDetail = null;
+  let visibleDetailCards = [];
+  let selectionMode = false;
+  const selectedCardKeys = new Set();
+  const expandedDuplicateKeys = new Set();
 
   const $ = selector => document.querySelector(selector);
 
@@ -28,6 +32,24 @@
 
   function formatCount(value) {
     return new Intl.NumberFormat("de-DE").format(Math.max(0, Number(value || 0)));
+  }
+
+  function goalLabel(value) {
+    return ({
+      numbers: "Jede Kartennummer einmal",
+      "normal-reverse": "Normal/Holo + Reverse",
+      master: "Alle bekannten Varianten"
+    })[String(value || "numbers")] || "Jede Kartennummer einmal";
+  }
+
+  function goalHint(value) {
+    if (value === "normal-reverse") return "Reverse-Karten zählen zusätzlich zur normalen oder Holo-Version.";
+    if (value === "master") return "Jede von der Datenbank bekannte Kartenvariante zählt als eigenes Sammelziel.";
+    return "Fortschritt wird nach jeder Kartennummer berechnet.";
+  }
+
+  function variantLabel(value) {
+    return ({ normal: "Normal", holo: "Holo", reverse: "Reverse Holo", firstEdition: "1. Auflage", wPromo: "Promo", other: "Sonstige" })[String(value || "normal")] || "Normal";
   }
 
   function setText(selector, value) {
@@ -95,8 +117,8 @@
   }
 
   function matchesOverviewFilter(set) {
-    if (overviewFilter === "incomplete") return set.ownedUnique > 0 && !set.complete;
-    if (overviewFilter === "complete") return set.complete;
+    if (overviewFilter === "incomplete") return set.ownedUnique > 0 && !set.displayComplete;
+    if (overviewFilter === "complete") return set.displayComplete;
     if (overviewFilter === "duplicates") return set.duplicateCopies > 0;
     if (overviewFilter === "wishlist") return set.wishlistCount > 0;
     return true;
@@ -154,6 +176,40 @@
   }
 
 
+  function getSelectedCards() {
+    if (!currentDetail) return [];
+    return currentDetail.cards.filter(card => selectedCardKeys.has(card.key));
+  }
+
+  function updateSelectionToolbar() {
+    const toolbar = $("#setSelectionToolbar");
+    const toggle = $("#toggleSetSelectionButton");
+    toolbar?.classList.toggle("hidden", !selectionMode);
+    toggle?.setAttribute("aria-pressed", selectionMode ? "true" : "false");
+    toggle?.classList.toggle("active", selectionMode);
+    if (toggle) toggle.textContent = selectionMode ? "Auswahl beenden" : "Auswahl";
+    setText("#setSelectionCount", selectedCardKeys.size);
+
+    const selected = getSelectedCards();
+    const addButton = $("#addSelectedSetCardsToWishlistButton");
+    const removeButton = $("#removeSelectedSetCardsFromWishlistButton");
+    if (addButton) addButton.disabled = !selected.some(card => !card.ownedQuantity && !card.wishlistQuantity && !card.unlisted);
+    if (removeButton) removeButton.disabled = !selected.some(card => card.wishlistEntries?.length);
+  }
+
+  function setSelectionMode(enabled) {
+    selectionMode = Boolean(enabled);
+    if (!selectionMode) selectedCardKeys.clear();
+    updateSelectionToolbar();
+    if (currentDetail) void renderDetailCardsOnly();
+  }
+
+  function toggleCardSelection(cardKey, selected) {
+    if (selected) selectedCardKeys.add(cardKey);
+    else selectedCardKeys.delete(cardKey);
+    updateSelectionToolbar();
+  }
+
   function sortOverviewSets(sets) {
     const collator = new Intl.Collator("de", { numeric: true, sensitivity: "base" });
     return [...sets].sort((a, b) => {
@@ -161,13 +217,13 @@
       if (overviewSort === "missing-desc") return b.missing - a.missing || collator.compare(a.name, b.name);
       if (overviewSort === "duplicates-desc") return b.duplicateCopies - a.duplicateCopies || collator.compare(a.name, b.name);
       if (overviewSort === "cards-desc") return b.ownedUnique - a.ownedUnique || collator.compare(a.name, b.name);
-      return b.progress - a.progress || b.ownedUnique - a.ownedUnique || collator.compare(a.name, b.name);
+      return Number(b.displayProgress ?? b.progress) - Number(a.displayProgress ?? a.progress) || b.ownedUnique - a.ownedUnique || collator.compare(a.name, b.name);
     });
   }
 
   function createSetCard(set) {
     const article = document.createElement("article");
-    article.className = `set-overview-card${set.complete ? " complete" : ""}${set.project ? " project" : ""}`;
+    article.className = `set-overview-card${set.displayComplete ? " complete" : ""}${set.project ? " project" : ""}`;
     article.dataset.setId = set.id;
     article.tabIndex = 0;
     article.setAttribute("role", "button");
@@ -205,23 +261,27 @@
 
     const stats = document.createElement("span");
     stats.className = "set-overview-card-stats";
-    const totalLabel = set.total ? `${formatCount(set.ownedUnique)} / ${formatCount(set.total)}` : `${formatCount(set.ownedUnique)} gesammelt`;
-    stats.innerHTML = `<b>${escapeHtml(totalLabel)}</b><small>${set.missing ? `${formatCount(set.missing)} fehlen` : set.complete ? "SET KOMPLETT" : "Gesamtzahl nicht verfügbar"}${set.duplicateCopies ? ` · ${formatCount(set.duplicateCopies)} doppelt` : ""}</small>`;
+    const displayOwned = Number(set.displayOwned ?? set.ownedUnique);
+    const displayTotal = Number(set.displayTotal ?? set.total);
+    const displayMissing = Number(set.displayMissing ?? set.missing);
+    const displayComplete = Boolean(set.displayComplete);
+    const totalLabel = displayTotal ? `${formatCount(displayOwned)} / ${formatCount(displayTotal)}` : `${formatCount(displayOwned)} gesammelt`;
+    stats.innerHTML = `<b>${escapeHtml(totalLabel)}</b><small>${displayMissing ? `${formatCount(displayMissing)} fehlen` : displayComplete ? "SAMMELZIEL KOMPLETT" : "Gesamtzahl nicht verfügbar"}${set.duplicateCopies ? ` · ${formatCount(set.duplicateCopies)} doppelt` : ""}</small>`;
 
     const progress = document.createElement("span");
     progress.className = "set-progress-track";
     const fill = document.createElement("i");
-    fill.style.width = `${set.progress}%`;
+    fill.style.width = `${Number(set.displayProgress ?? set.progress)}%`;
     progress.append(fill);
 
     const footer = document.createElement("span");
     footer.className = "set-overview-footer";
     const status = document.createElement("span");
-    status.className = set.complete ? "set-complete-badge" : "set-progress-badge";
-    status.textContent = set.complete ? "✓ VOLLSTÄNDIG" : `${set.progress} %`;
+    status.className = set.displayComplete ? "set-complete-badge" : "set-progress-badge";
+    status.textContent = set.displayComplete ? "✓ VOLLSTÄNDIG" : `${Number(set.displayProgress ?? set.progress)} %`;
     const wishlist = document.createElement("span");
     wishlist.textContent = set.project
-      ? "★ SET-PROJEKT"
+      ? `★ ${set.projectGoal === "master" ? "MASTER SET" : set.projectGoal === "normal-reverse" ? "NORMAL + REVERSE" : "SET-PROJEKT"}`
       : set.wishlistCount
         ? `★ ${formatCount(set.wishlistCount)} Wunschliste`
         : "Details öffnen";
@@ -321,6 +381,7 @@
     if (detailFilter === "missing") return !card.ownedQuantity && !card.unlisted;
     if (detailFilter === "duplicates") return card.duplicateCopies > 0;
     if (detailFilter === "wishlist") return card.wishlistQuantity > 0;
+    if (detailFilter === "trade") return card.tradeQuantity > 0;
     return true;
   }
 
@@ -340,9 +401,96 @@
       || "https://www.cardmarket.com/de/Pokemon/Products/Search";
   }
 
+  function createDuplicateManager(card) {
+    const panel = document.createElement("div");
+    panel.className = `set-duplicate-manager${expandedDuplicateKeys.has(card.key) ? "" : " hidden"}`;
+    const duplicateEntries = (card.ownedEntries || []).filter(entry => Number(entry.groupDuplicateCopies || 0) > 0);
+    if (!duplicateEntries.length) return panel;
+
+    const heading = document.createElement("div");
+    heading.className = "set-duplicate-manager-heading";
+    heading.innerHTML = `<strong>DUBLETTEN-MANAGER</strong><span>${formatCount(card.duplicateCopies)} zusätzliche Exemplare · ${formatCount(card.tradeQuantity)} für Tausch</span>`;
+    panel.append(heading);
+
+    duplicateEntries.forEach(entry => {
+      const ownQuantity = Math.max(0, Number(entry.quantity || 0));
+      const maximumGroupTrade = Math.max(0, Number(entry.groupDuplicateCopies || 0));
+      const groupTrade = Math.min(maximumGroupTrade, Math.max(0, Number(entry.groupTradeQuantity || 0)));
+      const trade = Math.min(ownQuantity, Math.max(0, Number(entry.tradeQuantity || 0)));
+      const row = document.createElement("div");
+      row.className = "set-duplicate-entry";
+      const info = document.createElement("div");
+      const history = [
+        Number(entry.soldQuantity || 0) ? `${formatCount(entry.soldQuantity)} verkauft` : "",
+        Number(entry.tradedAwayQuantity || 0) ? `${formatCount(entry.tradedAwayQuantity)} getauscht` : ""
+      ].filter(Boolean).join(" · ");
+      info.innerHTML = `<strong>${escapeHtml(entry.collectionName || "Sammlung")}</strong><small>${escapeHtml(String(entry.language || "de").toUpperCase())} · ${escapeHtml(variantLabel(entry.variant))} · ${formatCount(entry.quantity)}× vorhanden · ${formatCount(trade)}× Tausch${history ? ` · ${escapeHtml(history)}` : ""}</small>`;
+      const controls = document.createElement("div");
+      controls.className = "set-duplicate-entry-actions";
+
+      const lessTrade = document.createElement("button");
+      lessTrade.type = "button";
+      lessTrade.className = "mini-system-button";
+      lessTrade.textContent = "− Tausch";
+      lessTrade.disabled = trade <= 0;
+      lessTrade.addEventListener("click", async () => {
+        await window.CardDexSetEngine?.updateTradeQuantity?.(entry.id, -1);
+        await renderDetail();
+      });
+
+      const moreTrade = document.createElement("button");
+      moreTrade.type = "button";
+      moreTrade.className = "mini-system-button";
+      moreTrade.textContent = "+ Tausch";
+      moreTrade.disabled = trade >= ownQuantity || groupTrade >= maximumGroupTrade;
+      moreTrade.addEventListener("click", async () => {
+        await window.CardDexSetEngine?.updateTradeQuantity?.(entry.id, 1);
+        await renderDetail();
+      });
+
+      const sold = document.createElement("button");
+      sold.type = "button";
+      sold.className = "mini-system-button";
+      sold.textContent = "Verkauft";
+      sold.addEventListener("click", async () => {
+        if (!confirm(`Ein Exemplar von „${card.name}“ als verkauft markieren und den Bestand um 1 verringern?`)) return;
+        await window.CardDexSetEngine?.disposeDuplicate?.(entry.id, "sold");
+        await renderDetail();
+      });
+
+      const traded = document.createElement("button");
+      traded.type = "button";
+      traded.className = "mini-system-button";
+      traded.textContent = "Getauscht";
+      traded.addEventListener("click", async () => {
+        if (!confirm(`Ein Exemplar von „${card.name}“ als getauscht markieren und den Bestand um 1 verringern?`)) return;
+        await window.CardDexSetEngine?.disposeDuplicate?.(entry.id, "traded");
+        await renderDetail();
+      });
+
+      controls.append(lessTrade, moreTrade, sold, traded);
+      row.append(info, controls);
+      panel.append(row);
+    });
+    return panel;
+  }
+
   function createSetDetailCard(set, card) {
     const article = document.createElement("article");
-    article.className = `set-card-row${card.ownedQuantity ? " owned" : " missing"}${card.duplicateCopies ? " duplicate" : ""}`;
+    article.className = `set-card-row${card.ownedQuantity ? " owned" : " missing"}${card.duplicateCopies ? " duplicate" : ""}${selectionMode ? " selection-mode" : ""}${selectedCardKeys.has(card.key) ? " selected" : ""}`;
+    article.dataset.cardKey = card.key;
+
+    if (selectionMode) {
+      const selectLabel = document.createElement("label");
+      selectLabel.className = "set-card-selection";
+      selectLabel.setAttribute("aria-label", `${card.name} auswählen`);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedCardKeys.has(card.key);
+      checkbox.addEventListener("change", () => toggleCardSelection(card.key, checkbox.checked));
+      selectLabel.append(checkbox, document.createElement("i"));
+      article.append(selectLabel);
+    }
 
     const image = document.createElement("img");
     image.loading = "lazy";
@@ -373,11 +521,23 @@
       missing.textContent = "FEHLT";
       badges.append(missing);
     }
+    if (card.goal && !card.goal.complete) {
+      const goal = document.createElement("span");
+      goal.className = "set-card-status goal";
+      goal.textContent = `NOCH: ${card.goal.missingSlots.map(slot => slot.label).join(", ")}`;
+      badges.append(goal);
+    }
     if (card.duplicateCopies) {
       const duplicate = document.createElement("span");
       duplicate.className = "set-card-status duplicate";
       duplicate.textContent = `${card.duplicateCopies} DOPPELT`;
       badges.append(duplicate);
+    }
+    if (card.tradeQuantity) {
+      const trade = document.createElement("span");
+      trade.className = "set-card-status trade";
+      trade.textContent = `${card.tradeQuantity}× TAUSCH`;
+      badges.append(trade);
     }
     if (card.wishlistQuantity) {
       const wishlist = document.createElement("span");
@@ -440,12 +600,37 @@
       actions.prepend(wishlist);
     }
 
+    if (card.duplicateCopies) {
+      const manage = document.createElement("button");
+      manage.type = "button";
+      manage.className = "mini-system-button duplicate-manager-toggle";
+      manage.textContent = expandedDuplicateKeys.has(card.key) ? "Dubletten schließen" : "Dubletten verwalten";
+      manage.addEventListener("click", () => {
+        if (expandedDuplicateKeys.has(card.key)) expandedDuplicateKeys.delete(card.key);
+        else expandedDuplicateKeys.add(card.key);
+        void renderDetailCardsOnly();
+      });
+      actions.append(manage);
+    }
+
     article.append(image, body, actions);
+    const duplicatePanel = createDuplicateManager(card);
+    if (duplicatePanel.childElementCount) article.append(duplicatePanel);
     return article;
   }
 
   function renderSetHeader(result) {
     const set = result.set;
+    const goal = result.goalProgress || {
+      goal: set.projectGoal || "numbers",
+      owned: set.ownedUnique,
+      target: set.total,
+      missing: set.missing,
+      progress: set.progress,
+      complete: set.complete,
+      regular: { owned: result.numberStats?.regular?.owned || 0, target: result.numberStats?.regular?.total || 0 },
+      secret: { owned: result.numberStats?.secret?.owned || 0, target: result.numberStats?.secret?.total || 0 }
+    };
     const logo = $("#setDetailLogo");
     if (logo) {
       logo.alt = `${set.name} Logo`;
@@ -453,17 +638,47 @@
     }
     setText("#setDetailName", set.name);
     setText("#setDetailCode", String(set.id || "").toUpperCase());
-    setText("#setDetailOwnedCount", set.ownedUnique);
-    setText("#setDetailTotalCount", set.total || "–");
-    setText("#setDetailMissingCount", set.missing);
+    setText("#setDetailOwnedCount", goal.owned);
+    setText("#setDetailTotalCount", goal.target || "–");
+    setText("#setDetailProgressUnit", goal.goal === "numbers" ? "Karten" : "Sammelziele");
+    setText("#setDetailRegularCount", `${formatCount(goal.regular?.owned || 0)} / ${formatCount(goal.regular?.target || 0)}`);
+    setText("#setDetailSecretCount", `${formatCount(goal.secret?.owned || 0)} / ${formatCount(goal.secret?.target || 0)}`);
+    setText("#setDetailMissingCount", goal.missing);
     setText("#setDetailDuplicateCount", set.duplicateCopies);
     setText("#setDetailWishlistCount", set.wishlistCount);
-    setText("#setDetailPercent", `${set.progress} %`);
+    setText("#setDetailPercent", `${goal.progress} %`);
     const bar = $("#setDetailProgressBar");
-    if (bar) bar.style.width = `${set.progress}%`;
-    $("#setDetailPanel")?.classList.toggle("complete", set.complete);
+    if (bar) bar.style.width = `${goal.progress}%`;
+    $("#setDetailPanel")?.classList.toggle("complete", goal.complete);
+    const goalSelect = $("#setProjectGoalSelect");
+    if (goalSelect) goalSelect.value = goal.goal || "numbers";
+    setText("#setProjectGoalHint", goalHint(goal.goal));
     updateProjectDetailButton(set);
     updateBulkWishlistAction(result);
+  }
+
+  function getFilteredDetailCards() {
+    if (!currentDetail) return [];
+    const query = normalizeText(detailSearch);
+    let cards = currentDetail.cards.filter(cardMatchesDetailFilter);
+    if (query) cards = cards.filter(card => normalizeText(`${card.name} ${card.localId} ${card.rarity || ""}`).includes(query));
+    return cards;
+  }
+
+  async function renderDetailCardsOnly() {
+    const list = $("#setDetailCards");
+    if (!list || !currentDetail) return;
+    visibleDetailCards = getFilteredDetailCards();
+    const summary = $("#setDetailFilterSummary");
+    if (summary) summary.textContent = `${formatCount(visibleDetailCards.length)} Karten angezeigt${selectionMode ? ` · ${formatCount(selectedCardKeys.size)} ausgewählt` : ""}`;
+    list.innerHTML = "";
+    if (!visibleDetailCards.length) {
+      list.append(createEmpty("KEINE PASSENDEN KARTEN", "Passe Filter oder Suchbegriff an."));
+      updateSelectionToolbar();
+      return;
+    }
+    visibleDetailCards.forEach(card => list.append(createSetDetailCard(currentDetail.set, card)));
+    updateSelectionToolbar();
   }
 
   async function renderDetail(options = {}) {
@@ -483,12 +698,6 @@
       currentDetail = result;
       renderSetHeader(result);
 
-      const query = normalizeText(detailSearch);
-      let cards = result.cards.filter(cardMatchesDetailFilter);
-      if (query) cards = cards.filter(card => normalizeText(`${card.name} ${card.localId} ${card.rarity || ""}`).includes(query));
-
-      const summary = $("#setDetailFilterSummary");
-      if (summary) summary.textContent = `${formatCount(cards.length)} Karten angezeigt`;
       const status = $("#setDetailStatus");
       if (status) {
         if (!result.catalogAvailable) {
@@ -498,19 +707,14 @@
           status.textContent = "Offline-Modus: Zuletzt gespeicherte Kartendaten werden verwendet.";
           status.classList.add("warning");
         } else {
-          status.textContent = result.set.complete
-            ? "Set vollständig – alle bekannten Karten sind in deiner Sammlung vorhanden."
-            : "Fehlende Karten können direkt auf die Wunschliste gesetzt oder bei Cardmarket gesucht werden.";
+          status.textContent = result.goalProgress?.complete
+            ? `Sammelziel „${goalLabel(result.goalProgress.goal)}“ vollständig erreicht.`
+            : "Fehlende Karten und Varianten können gezielt ausgewählt, vorgemerkt oder als Dubletten verwaltet werden.";
           status.classList.remove("warning");
         }
       }
 
-      list.innerHTML = "";
-      if (!cards.length) {
-        list.append(createEmpty("KEINE PASSENDEN KARTEN", "Passe Filter oder Suchbegriff an."));
-        return;
-      }
-      cards.forEach(card => list.append(createSetDetailCard(result.set, card)));
+      await renderDetailCardsOnly();
     } catch (error) {
       if (token !== detailToken) return;
       list.innerHTML = "";
@@ -523,6 +727,9 @@
     selectedSetId = String(setId || "");
     detailFilter = "all";
     detailSearch = "";
+    selectionMode = false;
+    selectedCardKeys.clear();
+    expandedDuplicateKeys.clear();
     if ($("#setDetailSearchInput")) $("#setDetailSearchInput").value = "";
     updateDetailChipState();
     setOverviewPanels(true);
@@ -533,6 +740,11 @@
   function closeSetDetail() {
     selectedSetId = "";
     currentDetail = null;
+    visibleDetailCards = [];
+    selectionMode = false;
+    selectedCardKeys.clear();
+    expandedDuplicateKeys.clear();
+    updateSelectionToolbar();
     setOverviewPanels(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -572,6 +784,44 @@
       if (!selectedSetId) return;
       void toggleProject(selectedSetId, $("#setDetailProjectButton"));
     });
+    $("#setProjectGoalSelect")?.addEventListener("change", event => {
+      if (!selectedSetId) return;
+      const goal = event.target.value || "numbers";
+      window.CardDexSetEngine?.setProjectSettings?.(selectedSetId, { goal });
+      if (!window.CardDexSetEngine?.isSetProject?.(selectedSetId)) {
+        window.CardDexSetEngine?.setSetProject?.(selectedSetId, true);
+      }
+      void renderDetail();
+    });
+    $("#toggleSetSelectionButton")?.addEventListener("click", () => setSelectionMode(!selectionMode));
+    $("#clearSetSelectionButton")?.addEventListener("click", () => {
+      selectedCardKeys.clear();
+      updateSelectionToolbar();
+      void renderDetailCardsOnly();
+    });
+    $("#selectVisibleSetCardsButton")?.addEventListener("click", () => {
+      visibleDetailCards.forEach(card => selectedCardKeys.add(card.key));
+      updateSelectionToolbar();
+      void renderDetailCardsOnly();
+    });
+    $("#addSelectedSetCardsToWishlistButton")?.addEventListener("click", async () => {
+      if (!currentDetail) return;
+      const candidates = getSelectedCards().filter(card => !card.ownedQuantity && !card.wishlistQuantity && !card.unlisted);
+      if (!candidates.length) return;
+      const cards = candidates.map(card => window.CardDexSetEngine.createWishlistCard(currentDetail.set, card));
+      await window.CardDexCollections?.addCardsToWishlist?.(cards, { language: currentDetail.set.language || "de" });
+      selectedCardKeys.clear();
+      await renderDetail();
+    });
+    $("#removeSelectedSetCardsFromWishlistButton")?.addEventListener("click", async () => {
+      const selected = getSelectedCards();
+      const ids = selected.flatMap(card => (card.wishlistEntries || []).map(entry => entry.id));
+      if (!ids.length) return;
+      if (!confirm(`${ids.length} ${ids.length === 1 ? "Eintrag" : "Einträge"} von der Wunschliste entfernen?`)) return;
+      await window.CardDexCollections?.removeWishlistEntries?.(ids);
+      selectedCardKeys.clear();
+      await renderDetail();
+    });
     $("#addMissingSetToWishlistButton")?.addEventListener("click", async () => {
       if (!currentDetail) return;
       const candidates = missingWishlistCandidates(currentDetail);
@@ -593,18 +843,18 @@
     });
     $("#setDetailSearchInput")?.addEventListener("input", event => {
       detailSearch = event.target.value || "";
-      void renderDetail();
+      void renderDetailCardsOnly();
     });
     $("#clearSetDetailSearchButton")?.addEventListener("click", () => {
       detailSearch = "";
       if ($("#setDetailSearchInput")) $("#setDetailSearchInput").value = "";
-      void renderDetail();
+      void renderDetailCardsOnly();
     });
     document.querySelectorAll("[data-set-detail-filter]").forEach(button => {
       button.addEventListener("click", () => {
         detailFilter = button.dataset.setDetailFilter || "all";
         updateDetailChipState();
-        void renderDetail();
+        void renderDetailCardsOnly();
       });
     });
   }
@@ -626,6 +876,10 @@
       if (window.CardDexLibrary?.getActiveView?.() !== "sets") return;
       if (selectedSetId) void renderDetail();
       else void renderOverview();
+    });
+    window.CardDexCore?.on?.("set-project-settings-changed", () => {
+      if (window.CardDexLibrary?.getActiveView?.() !== "sets" || !selectedSetId) return;
+      void renderDetail();
     });
   }
 
