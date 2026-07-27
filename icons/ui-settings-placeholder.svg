@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<circle cx="32" cy="32" r="8" stroke="#F6F7F2" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter"/><path d="M32 12V18M32 46V52M12 32H18M46 32H52M18 18 22 22M42 42 46 46M46 18 42 22M18 46 22 42" stroke="#F6F7F2" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>
