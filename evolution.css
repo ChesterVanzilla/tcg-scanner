@@ -893,3 +893,116 @@ footer { display:none; }
 .evolution-scanner-controls #closeScannerButton { grid-column: 1; }
 .evolution-scanner-controls #switchCameraButton { grid-column: 2; }
 .evolution-scanner-controls #captureButton { grid-column: 3; }
+
+/* ===== v7.0.2 – Header- & Icon-Korrektur ===== */
+.app-header {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 80;
+}
+
+.evolution-header-rail {
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  min-height: auto;
+}
+
+.evolution-header-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.evolution-device-code {
+  display: block;
+  font-size: .74rem;
+  letter-spacing: .1em;
+}
+
+.evolution-device-subline {
+  display: block;
+  color: rgba(88, 20, 20, .72);
+  font-size: .52rem;
+  font-weight: 700;
+  letter-spacing: .13em;
+}
+
+.evolution-brand-deck,
+.evolution-brand-deck-text-only {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 12px 0 10px;
+}
+
+.evolution-brand-deck .brand-device {
+  display: none !important;
+}
+
+.evolution-brand-deck .brand-copy {
+  min-width: 0;
+}
+
+.evolution-brand-deck .eyebrow {
+  margin-bottom: 6px;
+}
+
+.evolution-header-display {
+  display: none !important;
+}
+
+.evolution-system-sheet-rail {
+  grid-template-columns: 1fr 44px;
+}
+
+.evolution-system-sheet-title {
+  display: grid;
+  gap: 3px;
+}
+
+.evolution-menu-icon,
+.evolution-dock-icon,
+.evolution-action-icon {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.evolution-icon-img {
+  display: block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.evolution-action-icon .evolution-icon-img {
+  width: 26px;
+  height: 26px;
+}
+
+.evolution-menu-icon .evolution-icon-img {
+  width: 24px;
+  height: 24px;
+}
+
+.evolution-dock-icon .evolution-icon-img {
+  width: 25px;
+  height: 25px;
+}
+
+.evolution-menu-icon::before,
+.evolution-menu-icon::after,
+.evolution-action-icon::before,
+.evolution-action-icon::after {
+  content: none !important;
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    top: max(6px, env(safe-area-inset-top));
+  }
+
+  .evolution-device-subline {
+    font-size: .48rem;
+  }
+}

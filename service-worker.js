@@ -1,4 +1,4 @@
-const CACHE_NAME = "carddex-ai-v7-0-1-ui-correction";
+const CACHE_NAME = "carddex-ai-v7-0-2-header-icon-fix";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -23,7 +23,18 @@ const APP_SHELL = [
   "./icons/carddex-open-pokedex-1024.png",
   "./icons/card-placeholder.svg",
   "./icons/pixel-camera.svg",
-  "./icons/pixel-gallery.svg"
+  "./icons/pixel-gallery.svg",
+  "./icons/ui-home-placeholder.svg",
+  "./icons/ui-scan-placeholder.svg",
+  "./icons/ui-system-placeholder.svg",
+  "./icons/ui-collection-placeholder.svg",
+  "./icons/ui-wishlist-placeholder.svg",
+  "./icons/ui-sets-placeholder.svg",
+  "./icons/ui-history-placeholder.svg",
+  "./icons/ui-insights-placeholder.svg",
+  "./icons/ui-settings-placeholder.svg",
+  "./icons/ui-camera-placeholder.svg",
+  "./icons/ui-gallery-placeholder.svg"
 ];
 
 self.addEventListener("install", event => {

@@ -40,7 +40,7 @@
 <p class="boot-title">CARDEX AI</p>
 <p class="boot-subtitle">PERSONAL CARD SYSTEM</p>
 <div aria-hidden="true" class="boot-log">
-<span id="bootLine1">CARDEX SYSTEM v7.0.1</span>
+<span id="bootLine1">CARDEX SYSTEM v7.0.2</span>
 <span id="bootLine2">INITIALIZING MODULES…</span>
 <span id="bootLine3">CAMERA: CHECKING</span>
 <span id="bootLine4">AI LINK: CHECKING</span>
@@ -61,20 +61,20 @@
 <div class="app-shell" id="appShell">
 <header class="app-header">
 <div class="evolution-header-rail">
-<div class="evolution-header-lens"><i></i></div>
-<div aria-hidden="true" class="evolution-header-leds"><i></i><i></i><i></i></div>
+<div class="evolution-header-meta">
 <span class="evolution-device-code">CARDEX SYSTEM</span>
+<span class="evolution-device-subline">PERSONAL CARD ASSISTANT</span>
+</div>
 <span aria-live="polite" class="system-status"><i class="status-light state-off" id="systemStatusLed"></i><strong id="systemStatusText">KI AUS</strong></span>
 </div>
-<div class="evolution-brand-deck">
-<img alt="" class="brand-device" src="icons/carddex-open-pokedex.png"/>
+<div class="evolution-brand-deck evolution-brand-deck-text-only">
 <div class="brand-copy">
 <p class="eyebrow">PERSONAL CARD ASSISTANT</p>
 <h1>CardDex <em>AI</em></h1>
 <p>Scannen. Erkennen. Sammeln.</p>
 </div>
 <div aria-hidden="true" class="evolution-header-display">
-<span>EVOLUTION</span><strong>7.0</strong>
+<span>EVOLUTION</span><strong>7.0.2</strong>
 </div>
 </div>
 <div aria-label="Systemstatus" class="status-console">
@@ -115,7 +115,7 @@
 </div>
 <div class="evolution-dashboard-command">
 <button class="primary-button evolution-scan-command" id="dashboardStartScanner" type="button">
-<span aria-hidden="true" class="evolution-action-icon evolution-camera-icon"></span>
+<span aria-hidden="true" class="evolution-action-icon"><img alt="" class="evolution-icon-img" src="icons/ui-camera-placeholder.svg"/></span>
 <span><small>HAUPTMODUL</small>Live-Scanner starten</span>
 <i aria-hidden="true">›</i>
 </button>
@@ -252,12 +252,12 @@
 </div>
 <div class="upload-actions evolution-upload-actions">
 <button class="primary-button evolution-action-button" id="openScannerButton" type="button">
-<span aria-hidden="true" class="evolution-action-icon evolution-camera-icon"></span>
+<span aria-hidden="true" class="evolution-action-icon"><img alt="" class="evolution-icon-img" src="icons/ui-camera-placeholder.svg"/></span>
 <span><small>KAMERA</small>Live-Scanner</span><i aria-hidden="true">›</i>
 </button>
 <label class="secondary-button evolution-action-button evolution-gallery-action">
 <input accept="image/*" hidden="" id="galleryInput" type="file"/>
-<span aria-hidden="true" class="evolution-action-icon evolution-gallery-icon"></span>
+<span aria-hidden="true" class="evolution-action-icon"><img alt="" class="evolution-icon-img" src="icons/ui-gallery-placeholder.svg"/></span>
 <span><small>MEDIATHEK</small>Bild auswählen</span><i aria-hidden="true">›</i>
 </label>
 </div>
@@ -605,7 +605,7 @@
 <footer>
 <div class="footer-brand">
 <strong>CARDEX AI</strong>
-<span id="footerVersionText">PERSONAL CARD ASSISTANT · v7.0.1 · EVOLUTION</span>
+<span id="footerVersionText">PERSONAL CARD ASSISTANT · v7.0.2 · EVOLUTION</span>
 </div>
 <div aria-hidden="true" class="footer-leds">
 <span>POWER <i class="status-light state-amber pulse" id="footerPowerLed"></i></span>
@@ -616,20 +616,20 @@
 </footer>
 </div>
 <nav aria-label="CardDex Hauptsteuerung" class="evolution-bottom-dock">
-<button aria-label="Startseite" aria-selected="true" class="evolution-dock-button active" id="showDashboardView" type="button"><span class="evolution-dock-icon home"></span><strong>START</strong></button>
-<button aria-label="Scanner" aria-selected="false" class="evolution-dock-button evolution-dock-scan" id="showScannerView" type="button"><span class="evolution-dock-icon scan"></span><strong>SCAN</strong></button>
-<button aria-expanded="false" aria-label="Systemmenü öffnen" class="evolution-dock-button" id="openSystemMenuButton" type="button"><span class="evolution-dock-icon system"></span><strong>SYSTEM</strong></button>
+<button aria-label="Startseite" aria-selected="true" class="evolution-dock-button active" id="showDashboardView" type="button"><span class="evolution-dock-icon"><img alt="" class="evolution-icon-img" src="icons/ui-home-placeholder.svg"/></span><strong>START</strong></button>
+<button aria-label="Scanner" aria-selected="false" class="evolution-dock-button evolution-dock-scan" id="showScannerView" type="button"><span class="evolution-dock-icon"><img alt="" class="evolution-icon-img" src="icons/ui-scan-placeholder.svg"/></span><strong>SCAN</strong></button>
+<button aria-expanded="false" aria-label="Systemmenü öffnen" class="evolution-dock-button" id="openSystemMenuButton" type="button"><span class="evolution-dock-icon"><img alt="" class="evolution-icon-img" src="icons/ui-system-placeholder.svg"/></span><strong>SYSTEM</strong></button>
 </nav>
 <div aria-hidden="true" class="evolution-system-backdrop hidden" id="systemMenuBackdrop"></div>
 <aside aria-hidden="true" aria-labelledby="systemMenuTitle" aria-modal="true" class="evolution-system-sheet hidden" id="systemMenuSheet" role="dialog">
-<div class="evolution-system-sheet-rail"><div class="evolution-system-sheet-lens"><i></i></div><div><span>CARDEX SYSTEM</span><strong id="systemMenuTitle">Module</strong></div><button aria-label="Systemmenü schließen" id="closeSystemMenuButton" type="button">×</button></div>
+<div class="evolution-system-sheet-rail"><div class="evolution-system-sheet-title"><span>CARDEX SYSTEM</span><strong id="systemMenuTitle">Module</strong></div><button aria-label="Systemmenü schließen" id="closeSystemMenuButton" type="button">×</button></div>
 <div class="evolution-system-grid">
-<button id="showCollectionView" type="button"><span class="evolution-menu-icon collection"></span><strong>Sammlung</strong><small>Bestand &amp; Dubletten</small></button>
-<button id="systemOpenWishlistButton" type="button"><span class="evolution-menu-icon wishlist"></span><strong>Wunschliste</strong><small>Gesuchte Karten</small></button>
-<button id="showSetsView" type="button"><span class="evolution-menu-icon sets"></span><strong>Sets</strong><small>Projekte &amp; Fortschritt</small></button>
-<button id="showHistoryView" type="button"><span class="evolution-menu-icon history"></span><strong>Verlauf</strong><small>Letzte Erkennungen</small></button>
-<button id="showInsightsView" type="button"><span class="evolution-menu-icon insights"></span><strong>Insights</strong><small>Statistik &amp; Pflege</small></button>
-<button aria-controls="settingsDrawer" aria-expanded="false" id="openSettingsButton" type="button"><span class="evolution-menu-icon settings"></span><strong>Einstellungen</strong><small>System konfigurieren</small></button>
+<button id="showCollectionView" type="button"><span class="evolution-menu-icon"><img alt="" class="evolution-icon-img" src="icons/ui-collection-placeholder.svg"/></span><strong>Sammlung</strong><small>Bestand &amp; Dubletten</small></button>
+<button id="systemOpenWishlistButton" type="button"><span class="evolution-menu-icon"><img alt="" class="evolution-icon-img" src="icons/ui-wishlist-placeholder.svg"/></span><strong>Wunschliste</strong><small>Gesuchte Karten</small></button>
+<button id="showSetsView" type="button"><span class="evolution-menu-icon"><img alt="" class="evolution-icon-img" src="icons/ui-sets-placeholder.svg"/></span><strong>Sets</strong><small>Projekte &amp; Fortschritt</small></button>
+<button id="showHistoryView" type="button"><span class="evolution-menu-icon"><img alt="" class="evolution-icon-img" src="icons/ui-history-placeholder.svg"/></span><strong>Verlauf</strong><small>Letzte Erkennungen</small></button>
+<button id="showInsightsView" type="button"><span class="evolution-menu-icon"><img alt="" class="evolution-icon-img" src="icons/ui-insights-placeholder.svg"/></span><strong>Insights</strong><small>Statistik &amp; Pflege</small></button>
+<button aria-controls="settingsDrawer" aria-expanded="false" id="openSettingsButton" type="button"><span class="evolution-menu-icon"><img alt="" class="evolution-icon-img" src="icons/ui-settings-placeholder.svg"/></span><strong>Einstellungen</strong><small>System konfigurieren</small></button>
 </div>
 <div class="evolution-system-sheet-status"><span><i class="status-light state-green"></i> POWER</span><span><i class="status-light state-green"></i> LOCAL DB</span><span><i class="status-light state-off"></i> WORKER 2.2.1</span></div>
 </aside>
@@ -816,7 +816,7 @@
 <section class="settings-section">
 <div class="settings-section-title"><span>05</span><h3>System &amp; Wartung</h3></div>
 <div class="system-info-grid">
-<div><span>APP</span><strong id="settingsAppVersion">v7.0.1</strong></div>
+<div><span>APP</span><strong id="settingsAppVersion">v7.0.2</strong></div>
 <div><span>WORKER</span><strong id="workerVersionText">nicht geprüft</strong></div>
 <div><span>DATENBANK</span><strong>CardDex DB v2</strong></div>
 <div><span>SPEICHER</span><strong>lokal</strong></div>
