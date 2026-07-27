@@ -1,4 +1,4 @@
-const CACHE_NAME = "carddex-ai-v7-0-evolution";
+const CACHE_NAME = "carddex-ai-v7-0-1-ui-correction";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -21,7 +21,9 @@ const APP_SHELL = [
   "./icons/icon-512-maskable.png",
   "./icons/carddex-open-pokedex.png",
   "./icons/carddex-open-pokedex-1024.png",
-  "./icons/card-placeholder.svg"
+  "./icons/card-placeholder.svg",
+  "./icons/pixel-camera.svg",
+  "./icons/pixel-gallery.svg"
 ];
 
 self.addEventListener("install", event => {
