@@ -894,7 +894,7 @@ footer { display:none; }
 .evolution-scanner-controls #switchCameraButton { grid-column: 2; }
 .evolution-scanner-controls #captureButton { grid-column: 3; }
 
-/* ===== v7.0.2 – Header- & Icon-Korrektur ===== */
+/* ===== v7.0.3 – Header- & Icon-Korrektur ===== */
 .app-header {
   position: sticky;
   top: max(8px, env(safe-area-inset-top));
@@ -1005,4 +1005,38 @@ footer { display:none; }
   .evolution-device-subline {
     font-size: .48rem;
   }
+}
+
+
+/* ===== v7.0.3 – Header frei & dunkle Dashboard-Boxen ===== */
+.app-header {
+  position: relative;
+  top: auto;
+}
+
+.dashboard-primary-stats > div,
+.dashboard-today-console {
+  color: #dce5dd;
+  border-color: #465048;
+  background: linear-gradient(180deg, #141915, #0c100d);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.02), inset 0 0 22px rgba(0,0,0,.22);
+}
+
+.dashboard-primary-stats strong,
+.dashboard-today-header strong,
+.dashboard-verification-row strong {
+  color: #e6f3e8;
+}
+
+.dashboard-primary-stats span,
+.dashboard-today-header span,
+.dashboard-verification-row > span,
+.dashboard-primary-stats small {
+  color: #8f9a91;
+}
+
+.dashboard-verification-track {
+  border-color: #536056;
+  background: #070907;
+  box-shadow: inset 0 0 0 2px #151a16;
 }
